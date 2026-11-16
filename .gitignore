@@ -1,0 +1,35 @@
+# 构建产物
+build/
+build-*/
+out/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.exe
+*.dll
+
+# Qt / CMake 生成物
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.user
+*.autosave
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# 本地配置与日志（含 API Key，切勿提交）
+config.json
+*.log
+boot.log
+deploy.log
+deploy.err
+
+# 编辑器与系统
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

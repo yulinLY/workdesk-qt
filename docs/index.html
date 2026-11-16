@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkDesk · 桌面端多 AI 聚合客户端</title>
+<meta name="description" content="WorkDesk 是一款原生 Qt 实现的桌面端多 AI 聚合客户端，统一管理多个 AI 服务、配置档案与性格调试，支持文件与图片直传。最新版本 v1.1.0，Windows 10/11 x64 解压即用。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ==================== 导航 ==================== -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>WorkDesk</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">功能特性</a>
+      <a href="#changelog">更新公告</a>
+      <a href="#download">下载</a>
+      <a class="nav-cta" href="#download">立即下载</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ==================== 首屏 ==================== -->
+  <section class="hero">
+    <div class="wrap">
+      <span class="badge"><span class="dot" aria-hidden="true"></span>v1.1.0 已发布 · 2026-11-15</span>
+
+      <h1>WorkDesk</h1>
+
+      <p class="hero-sub">
+        桌面端多 AI 聚合客户端。<strong>原生 Qt 实现，非网页套壳</strong>——
+        一个窗口统管多个 AI 服务、配置档案与对话风格，文件图片直接拖进来就能发。
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#download">下载 v1.1.0</a>
+        <a class="btn btn-ghost" href="#changelog">查看更新内容</a>
+      </div>
+
+      <div class="hero-meta">
+        <span>Windows 10 / 11 x64</span>
+        <span>解压即用 · 免安装</span>
+        <span>原生 Qt6 客户端</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 功能特性 ==================== -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-tag">Features</div>
+        <h2>把多个 AI 收进同一张桌面</h2>
+        <p>不是浏览器标签页的堆叠，而是一个真正跑在本地的桌面客户端。</p>
+      </div>
+
+      <div class="features">
+
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">AI</div>
+          <h3>多 AI 聚合</h3>
+          <p>在同一界面接入并切换多个 AI 服务，无需在浏览器与多个标签页之间来回跳转，对话上下文各自独立保存。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon v2" aria-hidden="true">Qt</div>
+          <h3>原生 Qt 实现</h3>
+          <p>基于 C++ 与 Qt6 原生绘制，非 Electron 网页套壳。启动快、内存占用低，窗口与控件响应贴合系统原生手感。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon v3" aria-hidden="true">CF</div>
+          <h3>配置档案管理</h3>
+          <p>每个 AI 服务可保存为独立 profiles，支持新建、复制、重命名与删除，一键切换不同模型与接口配置。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon v2" aria-hidden="true">PE</div>
+          <h3>性格调试</h3>
+          <p>可调语气、回答详细度、表情使用、Markdown 渲染与称呼方式，让同一个模型输出你想要的那种说话风格。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon v3" aria-hidden="true">FI</div>
+          <h3>文件与图片直传</h3>
+          <p>支持把本地文件与图片路径直接交给模型，单文件上限 100MB；输入框内粘贴文件或截图即可发送。</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon" aria-hidden="true">ST</div>
+          <h3>流畅的流式体验</h3>
+          <p>回复气泡宽度自适应、自动贴底跟随滚动；代码块增量渲染稳定，不再闪烁或把视图弹回顶部。</p>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 更新公告 ==================== -->
+  <section class="section" id="changelog">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-tag">Changelog</div>
+        <h2>更新公告</h2>
+        <p>每一次改动都如实记录，下面是本版本的完整变更清单。</p>
+      </div>
+
+      <div class="changelog">
+
+        <div class="log-head">
+          <div class="log-title">
+            <span class="tag-ver">v1.1.0</span>
+            <span class="tag-new">最新</span>
+          </div>
+          <div class="log-date">发布日期：2026-11-15</div>
+        </div>
+
+        <div class="log-body">
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip add">新增</span> New</div>
+            <ul class="log-list">
+              <li>新增<em>多 AI 配置管理</em>（profiles），支持新建、复制、重命名、删除与一键切换。</li>
+              <li>新增<em>性格调试选项</em>：语气、详细度、表情、Markdown、称呼方式。</li>
+              <li>新增<em>文件与图片路径传递</em>，单文件上限 100MB。</li>
+              <li>新增输入框<em>粘贴文件与截图发送</em>。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip opt">优化</span> Improve</div>
+            <ul class="log-list">
+              <li>优化系统提示词拼装顺序，修正<em>自定义语气被性格预设覆盖</em>的问题。</li>
+              <li>优化流式回复气泡宽度自适应与自动贴底。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip fix">修复</span> Fixed</div>
+            <ul class="log-list">
+              <li>修复代码块增量渲染闪烁与滚动跳顶问题。</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 下载 ==================== -->
+  <section class="section" id="download">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-tag">Download</div>
+        <h2>下载 WorkDesk</h2>
+        <p>免安装，解压后直接运行。无需浏览器，无需额外运行环境。</p>
+      </div>
+
+      <div class="download-box">
+
+        <div class="dl-main">
+          <div class="dl-file">
+            <div class="dl-file-icon" aria-hidden="true">ZIP</div>
+            <div>
+              <div class="dl-file-name">WorkDeskQt-v1.1.0-win64.zip</div>
+              <div class="dl-file-sub">版本 v1.1.0 · 2026-11-15 发布</div>
+            </div>
+          </div>
+
+          <div class="dl-specs">
+            <div class="spec">
+              <div class="spec-k">平台</div>
+              <div class="spec-v">Windows 10 / 11 x64</div>
+            </div>
+            <div class="spec">
+              <div class="spec-k">体积</div>
+              <div class="spec-v">21.9 MB（解压后 54.6 MB）</div>
+            </div>
+            <div class="spec">
+              <div class="spec-k">安装方式</div>
+              <div class="spec-v">解压即用，无需安装</div>
+            </div>
+            <div class="spec">
+              <div class="spec-k">运行环境</div>
+              <div class="spec-v">依赖已随包附带</div>
+            </div>
+          </div>
+
+          <div class="dl-actions">
+            <a class="btn btn-primary btn-download" href="https://www.ilanzou.com/s/U37yTFDc8" target="_blank" rel="noopener">
+              下载 WorkDeskQt-v1.1.0-win64.zip
+            </a>
+            <a class="btn btn-ghost btn-repo" href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">前往 GitHub 仓库</a>
+          </div>
+          <div class="dl-hint">压缩包不含安装程序，下载后解压到任意目录即可运行。</div>
+        </div>
+
+        <aside class="dl-side">
+          <h3>使用说明</h3>
+          <ol class="steps">
+            <li>将压缩包解压到任意目录（建议路径不含中文与空格）。</li>
+            <li>进入解压后的文件夹，双击运行 <strong>WorkDeskQt.exe</strong>。</li>
+            <li>首次启动后按需添加 AI 服务配置，即可开始对话。</li>
+            <li>配置文件位于 <code>%APPDATA%\WorkDesk\config.json</code>，重装或迁移时可直接备份该文件。</li>
+          </ol>
+
+          <div class="dl-note">
+            提示：请保持解压后的文件结构完整，<code>.dll</code> 与 <code>platforms</code>、<code>imageformats</code> 等子目录需与 <code>WorkDeskQt.exe</code> 同级保留，移动时请整体搬运。
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ==================== 页脚 ==================== -->
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span class="brand">
+      <span class="brand-mark" aria-hidden="true" style="width:22px;height:22px;border-radius:7px;"></span>
+      WorkDesk
+    </span>
+    <span>WorkDesk Qt v1.1.0 · 桌面端多 AI 聚合客户端 · 2026</span>
+  </div>
+</footer>
+
+</body>
+</html>

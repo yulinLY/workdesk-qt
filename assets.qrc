@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>assets/WorkDesk.ico</file>
+        <file>assets/settings.ico</file>
+        <file>assets/about.ico</file>
+        <file>assets/chrome.ico</file>
+    </qresource>
+</RCC>

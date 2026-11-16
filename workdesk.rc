@@ -1,0 +1,2 @@
+// 程序图标：编译进 exe 资源段，资源管理器 / 任务栏 / 快捷方式都取这一份
+IDI_ICON1 ICON "assets/WorkDesk.ico"
