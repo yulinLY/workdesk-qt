@@ -1,6 +1,7 @@
 #include "settingsdialog.h"
 
 #include <QCheckBox>
+#include <QStyle>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
@@ -21,6 +22,19 @@
 #include "http.h"
 
 namespace wd {
+
+namespace {
+
+// 状态文字（成功绿 / 失败红）走全局 QSS 的 StatusOk / StatusErr，两套主题各有一套色值；
+// 换 objectName 后必须 unpolish/polish 一次，否则新规则不会套到已有控件上。
+void SetLabelState(QLabel* lab, bool ok) {
+  if (!lab) return;
+  lab->setObjectName(ok ? QStringLiteral("StatusOk") : QStringLiteral("StatusErr"));
+  lab->style()->unpolish(lab);
+  lab->style()->polish(lab);
+}
+
+}  // namespace
 namespace {
 
 struct Preset {
@@ -482,7 +496,7 @@ void SettingsDialog::PollProbe() {
   bool ok = false;
   if (probe_->Consume(status, ok)) {
     probeLab_->setText(QString::fromStdString(status));
-    probeLab_->setStyleSheet(ok ? "color:#5FD08A;" : "color:#E06C6C;");
+    SetLabelState(probeLab_, ok);
     testBtn_->setEnabled(true);
     probeTimer_->stop();
   } else if (!probe_->Running()) {
@@ -495,7 +509,7 @@ void SettingsDialog::PollProbe() {
 void SettingsDialog::SetState(const QString& text, bool ok) {
   if (!stateLab_) return;
   stateLab_->setText(text);
-  stateLab_->setStyleSheet(ok ? "color:#5FD08A;" : "color:#E06C6C;");
+  SetLabelState(stateLab_, ok);
 }
 
 }  // namespace wd

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 set(WD_SRC
     src/main.cpp
     src/config.cpp
@@ -15,9 +15,14 @@ set(WD_SRC
     src/messagebubble.cpp
     src/chatpanel.cpp
     src/notepad.cpp
+    src/fontcombo.cpp
     src/settingsdialog.cpp
     src/mainwindow.cpp
     src/dockbar.cpp
+    src/theme.cpp
+    src/frost.cpp
+    src/glass.cpp
+    src/smoothscroll.cpp
     src/util.cpp
     src/http.cpp
 )
@@ -29,10 +34,14 @@ set(WD_HDR
     src/messagebubble.h
     src/chatpanel.h
     src/notepad.h
+    src/fontcombo.h
     src/settingsdialog.h
     src/mainwindow.h
     src/dockbar.h
     src/theme.h
+    src/frost.h
+    src/glass.h
+    src/smoothscroll.h
     src/util.h
     src/http.h
 )
@@ -45,7 +54,7 @@ endif()
 target_compile_options(WorkDeskQt PRIVATE /utf-8 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /MP)
 target_compile_definitions(WorkDeskQt PRIVATE UNICODE _UNICODE)
 target_link_libraries(WorkDeskQt PRIVATE
-    Qt6::Widgets
+    Qt6::Widgets Qt6::Network
     winhttp comdlg32 shell32 ole32 oleaut32 user32 gdi32 windowscodecs uuid dwmapi
 )
 set_target_properties(WorkDeskQt PROPERTIES

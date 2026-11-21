@@ -19,7 +19,9 @@ Windows 10/11 x64 · Qt 6 Widgets · 解压即用
 
 官方下载页：<https://workdesk-qt.pages.dev>
 
-当前版本 v1.1.0（2026-11-15）· Windows 10/11 x64 · 解压即用，运行库已附带。
+直接下载：<https://www.ilanzou.com/s/rxUyfxTz1>
+
+当前版本 v1.1.1（2026-11-21）· Windows 10/11 x64 · 解压即用，运行库已附带。
 
 ## 使用
 
@@ -31,7 +33,7 @@ Windows 10/11 x64 · Qt 6 Widgets · 解压即用
 
 ## 从源码构建
 
-环境要求：Windows 10/11 x64、Qt 6.8+（msvc2022_64）、CMake 3.21+、Ninja、Visual Studio（含 C++ 桌面开发）。
+环境要求：Windows 10/11 x64、Qt 6.8+（msvc2022_64，需 Widgets 与 Network 模块）、CMake 3.21+、Ninja、Visual Studio（含 C++ 桌面开发）。
 
 ```powershell
 # 指定 Qt 目录编译；加 -DeployDir 会自动 windeployqt 到目标目录
@@ -50,7 +52,7 @@ cmake --build build
 ## 目录结构
 
 ```
-src/                C++ 源码（主窗口、聊天面板、消息气泡、Markdown、语法高亮、HTTP、配置、会话、便签、设置）
+src/                C++ 源码（主窗口、聊天面板、消息气泡、Markdown、语法高亮、HTTP、配置、会话、便签、字体选择、主题、毛玻璃、平滑滚动）
 assets/             图标资源
 third_party/        nlohmann/json 单头文件
 docs/               官网静态页与界面截图
@@ -59,6 +61,14 @@ build.ps1           一键编译与部署脚本
 ```
 
 ## 更新日志
+
+### v1.1.1 — 2026-11-21
+
+- 新增窗口毛玻璃效果：接入系统 DWM 亚克力材质，自绘磨砂面板兜底，系统不支持时自动降级为纯色。
+- 新增可搜索字体选择器：设置里的字体下拉框支持输入关键字即时过滤。
+- 新增平滑滚动：长对话滚动带缓动，不再逐行跳动。
+- 主题与绘制代码拆分为独立模块，配色与磨砂参数统一管理；笔记面板重构。
+- 已知问题：桌面 dock 收起时屏幕右侧可能短暂残留残影，下一版本修复。
 
 ### v1.1.0 — 2026-11-15
 

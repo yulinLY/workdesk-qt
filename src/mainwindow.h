@@ -28,6 +28,9 @@ class MainWindow : public QMainWindow {
 
   // 供应用级拖放路由器调用（子控件会自己吃拖放事件，必须在窗口层面统一接管）
   void HandleDropUrls(const QList<QUrl>& urls, QWidget* target = nullptr);
+
+  // 启动时从命令行/「打开方式」传入的文件：文本进记事本，其余按拖放规则分流
+  void OpenFiles(const QStringList& paths);
   void ShowDropHint(bool on);
 
  protected:
@@ -35,6 +38,7 @@ class MainWindow : public QMainWindow {
   void dropEvent(QDropEvent* e) override;
   void closeEvent(QCloseEvent* e) override;
   void resizeEvent(QResizeEvent* e) override;
+  void paintEvent(QPaintEvent* e) override;
   void showEvent(QShowEvent* e) override;
   bool eventFilter(QObject* obj, QEvent* ev) override;
 

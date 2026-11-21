@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class QFrame;
+class QMenu;
 class QLabel;
 class QToolButton;
 class QTimer;
@@ -32,6 +33,8 @@ class DockBar : public QWidget {
   void SetAnchor(int top, int height);
   // 边框隐藏状态变化时同步按钮文案（隐藏边框 / 显示边框）
   void SetBorderHidden(bool hidden);
+  // 主题档位变化后刷新按钮文案与菜单勾选
+  void SyncThemeButton();
   // 模块被隐藏后，把「还原入口」列进面板：传 [id, 标题] 列表，空列表表示没有隐藏模块
   void SetModules(const QList<QPair<QString, QString>>& modules);
   static int StripWidth();
@@ -62,6 +65,8 @@ class DockBar : public QWidget {
   QLabel* mark_ = nullptr;
   QToolButton* hideBtn_ = nullptr;
   QToolButton* borderIcon_ = nullptr;
+  QToolButton* themeBtn_ = nullptr;
+  QMenu* themeMenu_ = nullptr;
   QFrame* modSep_ = nullptr;
   QWidget* modBox_ = nullptr;
   QVBoxLayout* modLay_ = nullptr;

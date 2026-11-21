@@ -3,17 +3,34 @@
 #include <QColor>
 #include <QStringList>
 
+#include "theme.h"
+
 namespace wd {
 namespace {
 
+// 代码着色两套：深色背景上用亮彩色，亮色背景上换成同色系但压暗、对比更高的版本，
+// 否则浅底上原来的糖果色几乎看不清。
 struct Palette {
-  QColor keyword = QColor(0xC7, 0x8B, 0xF5);   // 紫
-  QColor type = QColor(0x6F, 0xD1, 0xC4);      // 青
-  QColor string = QColor(0x9B, 0xD3, 0x8B);    // 绿
-  QColor number = QColor(0xE8, 0xB1, 0x71);    // 橙
-  QColor comment = QColor(0x76, 0x82, 0x8F);   // 灰
-  QColor preproc = QColor(0xE0, 0x8B, 0x8B);   // 红
-  QColor key = QColor(0x7C, 0xB8, 0xFF);       // 蓝
+  QColor keyword, type, string, number, comment, preproc, key;
+  Palette() {
+    if (theme::IsLightActive()) {
+      keyword = QColor(0x8A, 0x31, 0xC9);  // 紫
+      type = QColor(0x0E, 0x7C, 0x86);     // 青
+      string = QColor(0x1A, 0x7F, 0x3C);   // 绿
+      number = QColor(0xB5, 0x5D, 0x00);   // 橙
+      comment = QColor(0x6B, 0x76, 0x85);  // 灰
+      preproc = QColor(0xC0, 0x39, 0x39);  // 红
+      key = QColor(0x1F, 0x5F, 0xD0);      // 蓝
+    } else {
+      keyword = QColor(0xC7, 0x8B, 0xF5);
+      type = QColor(0x6F, 0xD1, 0xC4);
+      string = QColor(0x9B, 0xD3, 0x8B);
+      number = QColor(0xE8, 0xB1, 0x71);
+      comment = QColor(0x76, 0x82, 0x8F);
+      preproc = QColor(0xE0, 0x8B, 0x8B);
+      key = QColor(0x7C, 0xB8, 0xFF);
+    }
+  }
 };
 
 QString Join(const char* const* words, size_t n) {
@@ -25,8 +42,14 @@ QString Join(const char* const* words, size_t n) {
 }  // namespace
 
 CodeHighlighter::CodeHighlighter(QTextDocument* doc, const std::string& lang)
-    : QSyntaxHighlighter(doc) {
+    : QSyntaxHighlighter(doc), lang_(lang) {
   BuildFor(lang);
+}
+
+void CodeHighlighter::Recolor() {
+  rules_.clear();
+  BuildFor(lang_);
+  rehighlight();
 }
 
 void CodeHighlighter::AddRule(const QString& pattern, const QColor& color, bool bold) {

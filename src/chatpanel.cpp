@@ -12,13 +12,18 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPainter>
+#include <QPalette>
+#include <QPaintEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStandardPaths>
@@ -33,7 +38,7 @@
 #include "http.h"
 #include "markdown.h"
 #include "messagebubble.h"
-#include "wdtrace.h"
+#include "smoothscroll.h"
 
 namespace wd {
 namespace {
@@ -52,9 +57,61 @@ class InputEdit : public QPlainTextEdit {
   std::function<void()> onSubmit;
   std::function<void(const QStringList&)> onPastePaths;
   std::function<void(const QImage&)> onPasteImage;
-  explicit InputEdit(QWidget* p) : QPlainTextEdit(p) {}
+  explicit InputEdit(QWidget* p) : QPlainTextEdit(p) {
+    // 占位提示用 QLabel 叠在文本区上：原生 placeholder 不认输入法 preedit，
+    // 中文组字时拼音/候选会和提示文字叠在同一行。
+    setPlaceholderText(QString());
+    hint_ = new QLabel(viewport());
+    hint_->setObjectName(QStringLiteral("InputHint"));
+    hint_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    hint_->hide();
+    connect(this, &QPlainTextEdit::textChanged, this, [this]() { RefreshHint(); });
+  }
+
+  void SetHint(const QString& h) {
+    hintText_ = h;
+    RefreshHint();
+  }
 
  protected:
+  void resizeEvent(QResizeEvent* e) override {
+    QPlainTextEdit::resizeEvent(e);
+    RefreshHint();
+  }
+
+  // 组字进行中不显示提示，否则会和拼音/候选重叠
+  bool event(QEvent* e) override {
+    if (e->type() == QEvent::InputMethod) {
+      auto* ime = static_cast<QInputMethodEvent*>(e);
+      const bool composing = !ime->preeditString().isEmpty();
+      if (composing != composing_) {
+        composing_ = composing;
+        RefreshHint();
+      }
+    }
+    return QPlainTextEdit::event(e);
+  }
+
+  void RefreshHint() {
+    if (!hint_) return;
+    const bool want = !hintText_.isEmpty() && !composing_ && toPlainText().isEmpty();
+    if (!want) {
+      hint_->hide();
+      return;
+    }
+    QPalette pal = hint_->palette();
+    pal.setColor(QPalette::WindowText, palette().color(QPalette::PlaceholderText));
+    hint_->setPalette(pal);
+    hint_->setFont(font());
+    const QRect cr = cursorRect();
+    hint_->setGeometry(cr.left() + 2, cr.top(), qMax(0, viewport()->width() - cr.left() - 8),
+                       fontMetrics().height());
+    hint_->setText(hintText_);
+    hint_->show();
+    hint_->raise();
+  }
+
+
   void keyPressEvent(QKeyEvent* e) override {
     if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) &&
         !(e->modifiers() & Qt::ShiftModifier) && !(e->modifiers() & Qt::ControlModifier)) {
@@ -85,6 +142,11 @@ class InputEdit : public QPlainTextEdit {
     }
     QPlainTextEdit::insertFromMimeData(src);
   }
+
+ private:
+  QLabel* hint_ = nullptr;
+  QString hintText_;
+  bool composing_ = false;
 };
 
 // 把图片压到最长边 1280 再 base64，避免请求体过大导致首字变慢
@@ -110,9 +172,7 @@ bool LoadImageAsChatImage(const QString& path, ChatImage& out) {
 }  // namespace
 
 ChatPanel::ChatPanel(Config* cfg, QWidget* parent) : QWidget(parent), cfg_(cfg) {
-  wd::Trace("cp: ctor enter");
   stream_ = new ChatStream();
-  wd::Trace("cp: stream ok");
   pollTimer_ = new QTimer(this);
   pollTimer_->setInterval(16);
   connect(pollTimer_, &QTimer::timeout, this, &ChatPanel::PollStream);
@@ -123,13 +183,9 @@ ChatPanel::ChatPanel(Config* cfg, QWidget* parent) : QWidget(parent), cfg_(cfg) 
 
   // 拖放统一由主窗口分流（文本进记事本、图片/二进制进聊天），这里不再抢事件
   setAcceptDrops(false);
-  wd::Trace("cp: before buildui");
   BuildUi();
-  wd::Trace("cp: buildui ok");
   RefreshSessions();
-  wd::Trace("cp: refresh ok");
   NewSession();
-  wd::Trace("cp: newsession ok");
 }
 
 ChatPanel::~ChatPanel() {
@@ -194,7 +250,6 @@ void ChatPanel::BuildUi() {
 
   // 只有用户自己动手（滚轮 / 拖滑块）才算脱离跟随；
   // 内容长高导致距底变大属于正常生长，不能再误判成"用户上翻"而停掉跟随。
-  scroll_->viewport()->installEventFilter(this);
   {
     QScrollBar* vsb = scroll_->verticalScrollBar();
     connect(vsb, &QScrollBar::sliderPressed, this, [this]() { stickBottom_ = false; });
@@ -205,6 +260,21 @@ void ChatPanel::BuildUi() {
         ScrollToBottom(true);
       }
     });
+  }
+  // 滚轮已被全局平滑滚动接管，viewport 收不到 Wheel，方向由它的信号转达
+  if (auto* ss = wd::SmoothScroll::Install()) {
+    connect(ss, &wd::SmoothScroll::wheeled, this,
+            [this](QAbstractScrollArea* area, int notches) {
+              if (!scroll_ || area != scroll_) return;
+              QScrollBar* sb = scroll_->verticalScrollBar();
+              if (notches > 0) {
+                stickBottom_ = false;  // 用户往上翻：立刻交出滚动条
+              } else if (notches < 0 && sb->maximum() - sb->value() < 80) {
+                stickBottom_ = true;  // 自己滚回底部：恢复跟随
+                lastScrollMax_ = sb->maximum();
+                if (!scrollTimer_->isActive()) scrollTimer_->start();
+              }
+            });
   }
 
   // 待发送附件 chips
@@ -223,7 +293,9 @@ void ChatPanel::BuildUi() {
 
   auto* in = new InputEdit(box);
   input_ = in;
-  input_->setPlaceholderText(QStringLiteral("输入消息"));
+  in->SetHint(QStringLiteral("输入消息"));
+  input_->installEventFilter(this);
+  input_->viewport()->installEventFilter(this);
   input_->setMinimumHeight(72);
   input_->setMaximumHeight(190);
   input_->setAcceptDrops(false);
@@ -395,7 +467,6 @@ void ChatPanel::SetBusyUi(bool busy) {
 
 // ------------------------------------------------------------------ 列表
 void ChatPanel::AddBubble(const ChatMessage& msg, bool saveIt) {
-  wd::Trace("cp: addbubble enter");
   Q_UNUSED(saveIt);
   auto* b = new MessageBubble(msg, listHost_);
   connect(b, &MessageBubble::ImageClicked, this, [this](const QString& path) {
@@ -510,18 +581,6 @@ void ChatPanel::StepScroll() {
 }
 
 bool ChatPanel::eventFilter(QObject* obj, QEvent* ev) {
-  if (scroll_ && obj == scroll_->viewport() && ev->type() == QEvent::Wheel) {
-    auto* we = static_cast<QWheelEvent*>(ev);
-    const int dy = we->angleDelta().y();
-    QScrollBar* sb = scroll_->verticalScrollBar();
-    if (dy > 0) {
-      stickBottom_ = false;  // 用户往上翻：立刻交出滚动条
-    } else if (dy < 0 && sb->maximum() - sb->value() < 80) {
-      stickBottom_ = true;   // 自己滚回底部：恢复跟随
-      lastScrollMax_ = sb->maximum();
-      if (!scrollTimer_->isActive()) scrollTimer_->start();
-    }
-  }
   return QWidget::eventFilter(obj, ev);
 }
 

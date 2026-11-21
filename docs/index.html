@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WorkDesk · 桌面端多 AI 聚合客户端</title>
-<meta name="description" content="WorkDesk 是一款原生 Qt 实现的桌面端多 AI 聚合客户端，统一管理多个 AI 服务、配置档案与性格调试，支持文件与图片直传。最新版本 v1.1.0，Windows 10/11 x64 解压即用。">
+<meta name="description" content="WorkDesk 是一款原生 Qt 实现的桌面端多 AI 聚合客户端，统一管理多个 AI 服务、配置档案与性格调试，支持文件与图片直传。最新版本 v1.1.1，Windows 10/11 x64 解压即用。">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -30,7 +30,7 @@
   <!-- ==================== 首屏 ==================== -->
   <section class="hero">
     <div class="wrap">
-      <span class="badge"><span class="dot" aria-hidden="true"></span>v1.1.0 已发布 · 2026-11-15</span>
+      <span class="badge"><span class="dot" aria-hidden="true"></span>v1.1.1 已发布 · 2026-11-21</span>
 
       <h1>WorkDesk</h1>
 
@@ -40,7 +40,7 @@
       </p>
 
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#download">下载 v1.1.0</a>
+        <a class="btn btn-primary" href="#download">下载 v1.1.1</a>
         <a class="btn btn-ghost" href="#changelog">查看更新内容</a>
       </div>
 
@@ -116,8 +116,47 @@
 
         <div class="log-head">
           <div class="log-title">
-            <span class="tag-ver">v1.1.0</span>
+            <span class="tag-ver">v1.1.1</span>
             <span class="tag-new">最新</span>
+          </div>
+          <div class="log-date">发布日期：2026-11-21</div>
+        </div>
+
+        <div class="log-body">
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip add">新增</span> New</div>
+            <ul class="log-list">
+              <li>新增<em>窗口毛玻璃效果</em>：接入系统 DWM 亚克力材质，自绘磨砂面板兜底，系统不支持时自动降级为纯色。</li>
+              <li>新增<em>可搜索字体选择器</em>：设置里的字体下拉框支持输入关键字即时过滤。</li>
+              <li>新增<em>平滑滚动</em>：长对话滚动带缓动，不再逐行跳动。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip opt">优化</span> Improve</div>
+            <ul class="log-list">
+              <li>主题与绘制代码拆分为独立模块，配色与磨砂参数统一管理。</li>
+              <li>笔记面板重构，文本处理与交互更稳。</li>
+              <li>补齐系统合成接口依赖，减少非必要链接库。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip fix">已知问题</span> Known</div>
+            <ul class="log-list">
+              <li>桌面 dock 收起时，屏幕右侧可能短暂残留一条残影，下一版本修复。</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="changelog">
+
+        <div class="log-head">
+          <div class="log-title">
+            <span class="tag-ver">v1.1.0</span>
           </div>
           <div class="log-date">发布日期：2026-11-15</div>
         </div>
@@ -169,8 +208,8 @@
           <div class="dl-file">
             <div class="dl-file-icon" aria-hidden="true">ZIP</div>
             <div>
-              <div class="dl-file-name">WorkDeskQt-v1.1.0-win64.zip</div>
-              <div class="dl-file-sub">版本 v1.1.0 · 2026-11-15 发布</div>
+              <div class="dl-file-name">WorkDeskQt-v1.1.1-x64.zip</div>
+              <div class="dl-file-sub">版本 v1.1.1 · 2026-11-21 发布</div>
             </div>
           </div>
 
@@ -181,7 +220,7 @@
             </div>
             <div class="spec">
               <div class="spec-k">体积</div>
-              <div class="spec-v">21.9 MB（解压后 54.6 MB）</div>
+              <div class="spec-v">21.3 MB（解压后 54.8 MB）</div>
             </div>
             <div class="spec">
               <div class="spec-k">安装方式</div>
@@ -194,8 +233,8 @@
           </div>
 
           <div class="dl-actions">
-            <a class="btn btn-primary btn-download" href="https://www.ilanzou.com/s/U37yTFDc8" target="_blank" rel="noopener">
-              下载 WorkDeskQt-v1.1.0-win64.zip
+            <a class="btn btn-primary btn-download" href="https://www.ilanzou.com/s/rxUyfxTz1" target="_blank" rel="noopener">
+              下载 WorkDeskQt-v1.1.1-x64.zip
             </a>
             <a class="btn btn-ghost btn-repo" href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">前往 GitHub 仓库</a>
           </div>
@@ -229,7 +268,7 @@
       <span class="brand-mark" aria-hidden="true" style="width:22px;height:22px;border-radius:7px;"></span>
       WorkDesk
     </span>
-    <span>WorkDesk Qt v1.1.0 · 桌面端多 AI 聚合客户端 · 2026</span>
+    <span>WorkDesk Qt v1.1.1 · 桌面端多 AI 聚合客户端 · 2026</span>
   </div>
 </footer>
 

@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -9,6 +9,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -34,6 +35,8 @@
 
 #include "chatpanel.h"
 #include "dockbar.h"
+#include "frost.h"
+#include "glass.h"
 #include "notepad.h"
 #include "settingsdialog.h"
 #include "theme.h"
@@ -59,7 +62,8 @@ class CardSplitterHandle : public QSplitterHandle {
 
   void paintEvent(QPaintEvent*) override {
     QPainter p(this);
-    const QColor col = underMouse() ? QColor(0x4C, 0x8D, 0xFF) : QColor(0x2F, 0x34, 0x3B);
+    const QColor col = underMouse() ? QColor(theme::Hex(QStringLiteral("accent")))
+                                    : QColor(theme::Hex(QStringLiteral("line")));
     if (orientation() == Qt::Horizontal) {
       const int h = height() - kCardRadius * 2;
       if (h > 0) p.fillRect(QRect(width() / 2, kCardRadius, 1, h), col);
@@ -98,20 +102,43 @@ bool IsTextPath(const QString& p) {
   return false;
 }
 
-// Win11 的窗口标题栏跟随系统浅色，会和全深色界面割裂。用 DWM 强制深色标题栏，
-// 并把标题栏底色、文字色改成和主题一致（属性 34/35/36 需 Win11，失败不影响运行）
-void ApplyDarkTitleBar(QWidget* w) {
+// 窗口标题栏要跟界面主题走：深色界面配深色标题栏，亮色界面配亮色标题栏。
+// 属性 20/19 控制深浅（Win10 1809+），34/35/36（Win11）分别指定边框色/标题栏色/标题文字色，
+// 调用失败不影响功能，只是标题栏回到系统默认。
+void ApplyTitleBar(QWidget* w, bool light) {
   HWND hwnd = reinterpret_cast<HWND>(w->winId());
   if (!hwnd) return;
-  BOOL dark = TRUE;
+  BOOL dark = light ? FALSE : TRUE;
   if (FAILED(DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark))))
     DwmSetWindowAttribute(hwnd, 19, &dark, sizeof(dark));
-  const COLORREF caption = RGB(0x22, 0x26, 0x2C);
-  DwmSetWindowAttribute(hwnd, 35, &caption, sizeof(caption));
-  const COLORREF text = RGB(0xE6, 0xE9, 0xED);
+  const QColor txt = QColor(theme::Hex(QStringLiteral("text")));
+  COLORREF text = RGB(txt.red(), txt.green(), txt.blue());
   DwmSetWindowAttribute(hwnd, 36, &text, sizeof(text));
-  const COLORREF border = RGB(0x2C, 0x31, 0x38);
-  DwmSetWindowAttribute(hwnd, 34, &border, sizeof(border));
+  // 挂了系统材质时不能再指定标题栏色和边框色：一旦给了实色，DWM 就用纯色把亚克力盖死，
+  // 只剩客户区透出材质，标题栏会硬生生截成一块实心板。这里显式交给系统（DWMWA_COLOR_NONE）。
+  constexpr COLORREF kColorNone = 0xFFFFFFFE;
+  if (wd::glass::Enabled()) {
+    COLORREF none = kColorNone;
+    DwmSetWindowAttribute(hwnd, 35, &none, sizeof(none));
+    DwmSetWindowAttribute(hwnd, 34, &none, sizeof(none));
+  } else {
+    const QColor cap = QColor(theme::Hex(QStringLiteral("card")));
+    const QColor brd = QColor(theme::Hex(QStringLiteral("line")));
+    COLORREF caption = RGB(cap.red(), cap.green(), cap.blue());
+    DwmSetWindowAttribute(hwnd, 35, &caption, sizeof(caption));
+    COLORREF border = RGB(brd.red(), brd.green(), brd.blue());
+    DwmSetWindowAttribute(hwnd, 34, &border, sizeof(border));
+  }
+  // 已显示的窗口改完属性后需要让非客户区重画一次，否则标题栏颜色要等下次重绘才生效
+  SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
+// 走一遍子树强制重绘：QSS 换掉以后，自绘控件（分隔线、图标等）不会自己重画
+void RepaintAll(QWidget* w) {
+  if (!w) return;
+  w->update();
+  for (QWidget* c : w->findChildren<QWidget*>()) c->update();
 }
 
 void Repolish(QWidget* w) {
@@ -208,13 +235,26 @@ MainWindow::MainWindow() {
   setWindowTitle(QStringLiteral("WorkDesk"));
   resize(1440, 920);
   setAcceptDrops(true);
+  // 实时毛玻璃的前提：窗口像素必须带 alpha，DWM 才有地方透出系统材质。
+  // 这两条必须在第一次 show 之前设好，show 之后再改会让 Qt 重建窗口。
+  // WA_NoSystemBackground 关掉 Qt 自己的背景擦除，窗口底全由 paintEvent 画，
+  // 脏区由我们自己清干净，dock 展开/收起就不再留残影。
+  setAttribute(Qt::WA_TranslucentBackground, true);
+  setAttribute(Qt::WA_NoSystemBackground, true);
   BuildUi();
   wd::Trace("mw: buildui ok");
   BuildDock();
   wd::Trace("mw: builddock ok");
   RestoreLayout();
   wd::Trace("mw: restorelayout ok");
-  ApplyDarkTitleBar(this);
+  ApplyTitleBar(this, theme::ThemeManager::Instance().light());
+  // 主题切换后：标题栏重新上色 + 自绘控件重绘（QSS 由 ThemeManager 统一刷新）
+  connect(&theme::ThemeManager::Instance(), &theme::ThemeManager::Applied, this,
+          [this](bool light) {
+            ApplyTitleBar(this, light);
+            RepaintAll(this);
+            if (dock_) dock_->SyncThemeButton();
+          });
   wd::Trace("mw: titlebar ok");
   qApp->installEventFilter(new WindowDropRouter(this));
   // 状态栏那行"就绪"纯属噪音，直接不显示
@@ -278,7 +318,7 @@ void MainWindow::BuildUi() {
   tl->setSpacing(8);
 
   auto* appName = new QLabel(QStringLiteral("WorkDesk"), top_);
-  appName->setStyleSheet("color:#E6E9ED; font-size:15px; font-weight:600;");
+  appName->setObjectName("AppName");  // 颜色/字号交给全局 QSS，随主题切换
   tl->addWidget(appName);
   tl->addStretch(1);
 
@@ -297,7 +337,9 @@ void MainWindow::BuildUi() {
   connect(notepad_, &NotepadPanel::Notice, this, [this](const QString& text) {
     statusBar()->showMessage(text, 4000);
   });
+  wd::Trace("mw: notepad built");
   QWidget* noteCard = MakeCard(QStringLiteral("记事本"), notepad_, root_);
+  wd::Trace("mw: notepad card ok");
   noteCard->setProperty("cardId", QStringLiteral("notepad"));
 
   hsplit_ = new CardSplitter(Qt::Horizontal, root_);
@@ -338,6 +380,75 @@ void MainWindow::LayoutDock() {
 void MainWindow::resizeEvent(QResizeEvent* e) {
   QMainWindow::resizeEvent(e);
   LayoutDock();
+}
+
+// 主题 token 里的玻璃色写成 rgba(r, g, b, a)，QColor 不认这种函数写法，这里自己拆。
+// 返回无效色时由调用方用兜底色。
+static QColor TokenColor(const QString& token) {
+  const QString s = theme::Hex(token).trimmed();
+  if (s.startsWith(QLatin1Char('#'))) return QColor(s);
+  const int lp = s.indexOf(QLatin1Char('('));
+  const int rp = s.lastIndexOf(QLatin1Char(')'));
+  if (lp <= 0 || rp <= lp) return QColor();
+  const QStringList parts = s.mid(lp + 1, rp - lp - 1).split(QLatin1Char(','));
+  if (parts.size() < 3) return QColor();
+  const int r = parts[0].trimmed().toInt();
+  const int g = parts[1].trimmed().toInt();
+  const int b = parts[2].trimmed().toInt();
+  int a = 255;
+  if (parts.size() >= 4) {
+    const QString as = parts[3].trimmed();
+    a = as.contains(QLatin1Char('.')) ? int(as.toDouble() * 255.0) : as.toInt();
+  }
+  return QColor(r, g, b, qBound(0, a, 255));
+}
+
+// 窗口背景全部由这里画。三条路线，按能力从高到低：
+//   1) DWM 系统材质（亚克力）：DWM 每帧自己模糊窗口背后的真实内容，实时、走 GPU 合成，CPU 零开销；
+//      这里只叠主题遮罩 + 一层光泽渐变。
+//   2) 冻结的桌面快照磨砂（frost）：系统材质挂不上时的兜底，观感近似但不是实时。
+//   3) 主题实色底：兜底中的兜底。
+void MainWindow::paintEvent(QPaintEvent* e) {
+  QPainter p(this);
+  const QRect r = e->rect();
+  const QColor solid = TokenColor(QStringLiteral("bg"));
+  if (wd::glass::Enabled()) {
+    // 关键：窗口像素带 alpha，脏区必须先刷成完全透明，再叠遮罩。
+    // 少了这一步，新一帧盖在旧像素上，dock 展开/收起就会拖出一片残影。
+    p.setCompositionMode(QPainter::CompositionMode_Source);
+    p.fillRect(r, Qt::transparent);
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    QColor tint = TokenColor(QStringLiteral("glass"));
+    if (!tint.isValid()) tint = QColor(0, 0, 0, 96);
+    p.fillRect(r, tint);
+
+    // 玻璃有厚度：顶上一道反光、底部压一点暗，平面才不会显得像纸
+    const bool light = theme::IsLightActive();
+    QLinearGradient gloss(0, 0, 0, height());
+    gloss.setColorAt(0.0, QColor(255, 255, 255, light ? 44 : 26));
+    gloss.setColorAt(0.42, QColor(255, 255, 255, 0));
+    gloss.setColorAt(1.0, QColor(0, 0, 0, light ? 8 : 20));
+    p.fillRect(r, gloss);
+    return;
+  }
+  if (wd::frost::Ready()) {
+    wd::frost::Paint(this, p, r);
+    QColor tint = TokenColor(QStringLiteral("glass"));
+    if (!tint.isValid()) tint = solid;
+    p.fillRect(r, tint);
+    wd::frost::PaintGrain(p, r);
+
+    // 玻璃有厚度：顶上一道反光、底部压一点暗，平面才不会显得像纸
+    const bool light = theme::IsLightActive();
+    QLinearGradient gloss(0, 0, 0, height());
+    gloss.setColorAt(0.0, QColor(255, 255, 255, light ? 54 : 32));
+    gloss.setColorAt(0.42, QColor(255, 255, 255, 0));
+    gloss.setColorAt(1.0, QColor(0, 0, 0, light ? 10 : 26));
+    p.fillRect(r, gloss);
+  } else {
+    p.fillRect(r, solid.isValid() ? solid : palette().window().color());
+  }
 }
 
 void MainWindow::showEvent(QShowEvent* e) {
@@ -663,6 +774,11 @@ void MainWindow::dropEvent(QDropEvent* e) {
   if (!e->mimeData()->hasUrls()) return;
   e->acceptProposedAction();
   HandleDropUrls(e->mimeData()->urls());
+}
+
+void MainWindow::OpenFiles(const QStringList& paths) {
+  if (paths.isEmpty()) return;
+  RoutePaths(paths, false);
 }
 
 void MainWindow::HandleDropUrls(const QList<QUrl>& urls, QWidget* target) {

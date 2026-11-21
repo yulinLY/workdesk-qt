@@ -13,6 +13,8 @@ class CodeHighlighter : public QSyntaxHighlighter {
   Q_OBJECT
  public:
   CodeHighlighter(QTextDocument* doc, const std::string& lang);
+  // 主题切换后重新取色并全量重高亮
+  void Recolor();
 
  protected:
   void highlightBlock(const QString& text) override;
@@ -25,6 +27,7 @@ class CodeHighlighter : public QSyntaxHighlighter {
   void AddRule(const QString& pattern, const QColor& color, bool bold = false);
   void BuildFor(const std::string& lang);
 
+  std::string lang_;
   QVector<Rule> rules_;
   QRegularExpression commentStart_;
   QRegularExpression commentEnd_;

@@ -9,7 +9,10 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "frost.h"
+#include "glass.h"
 #include "mainwindow.h"
+#include "smoothscroll.h"
 #include "theme.h"
 
 namespace {
@@ -29,33 +32,6 @@ void Boot(const char* s) {
     fprintf(f, "%s\n", s);
     fclose(f);
   }
-}
-
-// 系统调色板默认是浅色，任何没被 QSS 命中的控件（滚动区 viewport、原生对话框等）
-// 都会露出 #F3F3F3 白底。这里整体换成深色调色板兜底。
-QPalette DarkPalette() {
-  QPalette p;
-  const QColor win(0x1B, 0x1E, 0x22), base(0x1E, 0x21, 0x26), card(0x23, 0x26, 0x2B);
-  const QColor text(0xE6, 0xE9, 0xED), muted(0x7C, 0x84, 0x8F), btn(0x2C, 0x31, 0x38);
-  const QColor hl(0x3B, 0x5C, 0x99);
-  p.setColor(QPalette::Window, win);
-  p.setColor(QPalette::WindowText, text);
-  p.setColor(QPalette::Base, base);
-  p.setColor(QPalette::AlternateBase, card);
-  p.setColor(QPalette::Text, text);
-  p.setColor(QPalette::Button, btn);
-  p.setColor(QPalette::ButtonText, QColor(0xD7, 0xDC, 0xE2));
-  p.setColor(QPalette::BrightText, QColor(0xFF, 0x6B, 0x6B));
-  p.setColor(QPalette::Highlight, hl);
-  p.setColor(QPalette::HighlightedText, Qt::white);
-  p.setColor(QPalette::ToolTipBase, btn);
-  p.setColor(QPalette::ToolTipText, text);
-  p.setColor(QPalette::PlaceholderText, muted);
-  p.setColor(QPalette::Light, QColor(0x2F, 0x34, 0x3B));
-  p.setColor(QPalette::Mid, QColor(0x3A, 0x41, 0x4A));
-  p.setColor(QPalette::Dark, QColor(0x15, 0x18, 0x1B));
-  p.setColor(QPalette::Shadow, QColor(0x10, 0x12, 0x15));
-  return p;
 }
 
 // 字体全部取自系统已安装字体库：按优先级挑第一个系统里真实存在的族，
@@ -91,14 +67,45 @@ int main(int argc, char* argv[]) {
   app.setWindowIcon(QIcon(QStringLiteral(":/assets/WorkDesk.ico")));
 
   app.setFont(PickSystemUiFont());
-  app.setPalette(DarkPalette());
   Boot("font ok");
-  app.setStyleSheet(QString::fromUtf8(wd::theme::kQss));
-  Boot("qss ok");
+  // 主题（深色/亮色/跟随系统/跟随时间）由 ThemeManager 统一判定并注入调色板与 QSS，
+  // 切换入口在右侧 dock 栏；偏好写 %APPDATA%\WorkDesk\WorkDeskQt\ui.ini
+  wd::theme::ThemeManager::Instance().Init();
+  Boot("theme ok");
 
+  // 全局平滑滚动：拦滚轮事件，滚动条按指数逼近推进，所有可滚动控件统一生效
+  wd::SmoothScroll::Install();
+  Boot("smoothscroll ok");
+
+  // 实时毛玻璃：窗口底交给 DWM 系统材质（亚克力），背后内容每帧由 DWM 重算，
+  // 不用抓屏、不用逐帧截图，CPU 零开销，录屏和截图都能正常看到窗口。
+  // 快照磨砂 frost 只在系统材质挂不上时兜底（老系统 / 关了透明效果）。
   wd::MainWindow win;
   Boot("mainwindow ok");
   win.show();
+  const bool glassOk = wd::glass::Enable(&win, wd::theme::ThemeManager::Instance().light());
+  Boot(glassOk ? "glass ok" : "glass none");
+  if (!glassOk) {
+    wd::frost::Capture();
+    Boot(wd::frost::Ready() ? "frost ok" : "frost none");
+    win.update();
+  }
+  // 主题切换后：材质重设一次（DWM 需要重画），窗口重绘换遮罩色
+  QObject::connect(&wd::theme::ThemeManager::Instance(), &wd::theme::ThemeManager::Applied, &win,
+                   [&win](bool light) {
+                     wd::glass::Retint(light);
+                     win.update();
+                   });
+
+  // 命令行 / 资源管理器「打开方式」传入的文件
+  if (argc > 1) {
+    QStringList files;
+    for (int i = 1; i < argc; ++i) {
+      const QString a = QString::fromLocal8Bit(argv[i]);
+      if (!a.startsWith('-')) files << a;
+    }
+    win.OpenFiles(files);
+  }
   Boot("show ok");
   const int r = app.exec();
   Boot("exit");

@@ -28,6 +28,7 @@
 #include <memory>
 
 #include "markdown.h"
+#include "theme.h"
 #include "syntaxhl.h"
 
 namespace wd {
@@ -174,9 +175,7 @@ class CodeBlock : public MdBlockWidget {
  public:
   explicit CodeBlock(QWidget* p) : MdBlockWidget(p) {
     auto* frame = new QFrame(this);
-    frame->setObjectName("CodeWrap");
-    frame->setStyleSheet(
-        "QFrame#CodeWrap { background:#1A1D22; border:1px solid #2F343B; border-radius:8px; }");
+    frame->setObjectName("CodeWrap");  // 配色在全局 QSS 里，随主题切换
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -188,28 +187,22 @@ class CodeBlock : public MdBlockWidget {
 
     auto* head = new QWidget(frame);
     head->setObjectName("CodeHead");
-    head->setStyleSheet(
-        "QWidget#CodeHead { background:#212630; border:none; border-top-left-radius:8px;"
-        " border-top-right-radius:8px; }");
     auto* hl = new QHBoxLayout(head);
     hl->setContentsMargins(10, 4, 6, 4);
     hl->setSpacing(8);
 
     langLab_ = new QLabel(head);
-    langLab_->setStyleSheet(
-        "color:#8FB6FF; font-size:11px; font-weight:600; background:transparent;");
+    langLab_->setObjectName("CodeLang");
     hl->addWidget(langLab_);
 
     info_ = new QLabel(head);
-    info_->setStyleSheet("color:#6E7885; font-size:11px; background:transparent;");
+    info_->setObjectName("CodeInfo");
     hl->addWidget(info_);
     hl->addStretch(1);
 
     copy_ = new QPushButton(QStringLiteral("复制"), head);
     copy_->setCursor(Qt::PointingHandCursor);
-    copy_->setStyleSheet(
-        "QPushButton { background:transparent; border:none; color:#8A929C; padding:2px 6px;"
-        " font-size:11px; } QPushButton:hover { color:#CFE0FF; }");
+    copy_->setObjectName("CodeCopy");
     connect(copy_, &QPushButton::clicked, this, [this]() {
       QGuiApplication::clipboard()->setText(code_);
       copy_->setText(QStringLiteral("已复制"));
@@ -227,13 +220,15 @@ class CodeBlock : public MdBlockWidget {
     edit_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     edit_->setFont(MonoFont());
     edit_->setTabStopDistance(4 * QFontMetricsF(MonoFont()).horizontalAdvance(QLatin1Char(' ')));
-    edit_->setStyleSheet(
-        "QPlainTextEdit { background:#1A1D22; border:none; padding:4px 8px; }"
-        "QPlainTextEdit QScrollBar:horizontal { height:9px; background:#15181C; }"
-        "QPlainTextEdit QScrollBar::handle:horizontal { background:#4A5563; border-radius:4px;"
-        " min-width:24px; }");
+    edit_->setObjectName("CodeEdit");
     edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     lay->addWidget(edit_);
+
+    // 切主题后代码着色要重算：QSS 只换背景，高亮格式是代码写死的
+    connect(&theme::ThemeManager::Instance(), &theme::ThemeManager::Applied, this,
+            [this](bool) {
+              if (hl_) hl_->Recolor();
+            });
   }
 
   void SetContent(const MdBlock& b) override {
@@ -375,18 +370,14 @@ void MessageBubble::BuildUi() {
     avatar_ = new QLabel(QStringLiteral("AI"), row_);
     avatar_->setFixedSize(28, 28);
     avatar_->setAlignment(Qt::AlignCenter);
-    avatar_->setStyleSheet(
-        "background:#34405A; color:#CFE0FF; border-radius:14px; font-size:11px; font-weight:700;");
+    avatar_->setObjectName("Avatar");
     rowLay->addWidget(avatar_, 0, Qt::AlignTop);
   }
 
   bubble_ = new QFrame(row_);
   bubble_->setObjectName("Bubble");
-  bubble_->setStyleSheet(msg_.user
-                             ? "QFrame#Bubble { background:#3A5B96; border:1px solid #47679F;"
-                               " border-radius:10px; }"
-                             : "QFrame#Bubble { background:#262A30; border:1px solid #2F343B;"
-                               " border-radius:10px; }");
+  // 用户气泡与 AI 气泡靠属性区分，配色交给全局 QSS（属性选择器），切主题自动跟着变
+  bubble_->setProperty("user", msg_.user);
   bubble_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 
   bubbleLay_ = new QVBoxLayout(bubble_);
@@ -401,7 +392,7 @@ void MessageBubble::BuildUi() {
   bubbleLay_->addWidget(content_);
 
   meta_ = new QLabel(QStringLiteral("正在生成…"), bubble_);
-  meta_->setStyleSheet("color:#9FB4D8; font-size:11px; background:transparent;");
+  meta_->setObjectName("BubbleMeta");
   meta_->setVisible(streaming_);
   bubbleLay_->addWidget(meta_);
 
@@ -437,7 +428,7 @@ void MessageBubble::BuildUi() {
       };
     } else {
       lab->setText(QStringLiteral("[图片] ") + FromUtf8(img.name));
-      lab->setStyleSheet("color:#C3CAD3;");
+      lab->setObjectName("AttachName");
     }
     attachLay_->addWidget(lab, 0, Qt::AlignTop);
   }
@@ -446,9 +437,7 @@ void MessageBubble::BuildUi() {
     auto* lab = new ClickableLabel(attach_);
     lab->setText(QStringLiteral("附件  ") + FromUtf8(f.name) + QStringLiteral("  ") +
                  FromUtf8(HumanSize(f.size)));
-    lab->setStyleSheet(
-        "background:#1E2126; color:#C3CAD3; border:1px solid #3A414A; border-radius:6px;"
-        " padding:3px 8px; font-size:12px;");
+    lab->setObjectName("AttachFile");
     lab->setCursor(Qt::PointingHandCursor);
     lab->setToolTip(QStringLiteral("点击用默认程序打开"));
     const QString path = QString::fromStdWString(f.path);

@@ -1,5 +1,9 @@
 #include "dockbar.h"
 
+#include <QAction>
+#include <QActionGroup>
+#include <QMenu>
+
 #include <QDateTime>
 #include <QEasingCurve>
 #include <QEnterEvent>
@@ -8,10 +12,15 @@
 #include <QIcon>
 #include <QLayoutItem>
 #include <QLabel>
+#include <QPainter>
 #include <QPropertyAnimation>
+#include <QProxyStyle>
+#include <QStyleOption>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include "theme.h"
 
 namespace wd {
 namespace {
@@ -33,6 +42,60 @@ QToolButton* MakeDockButton(const QString& text, const QString& iconPath, QWidge
   b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   return b;
 }
+
+// 主题按钮：只显示当前档位文字，不挂 QToolButton 的 menu，因此 Qt 从头到尾不会画下拉三角；
+// 点击时自己把菜单弹在按钮下方，菜单里用蓝点标当前项。
+class ThemeMenuButton : public QToolButton {
+ public:
+  explicit ThemeMenuButton(QWidget* parent) : QToolButton(parent) {
+    setObjectName(QStringLiteral("DockBtn"));
+    setToolButtonStyle(Qt::ToolButtonTextOnly);
+    setCursor(Qt::PointingHandCursor);
+    setMinimumHeight(24);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  }
+
+  void SetDropMenu(QMenu* menu) {
+    dropMenu_ = menu;
+    connect(this, &QToolButton::clicked, this, [this]() { PopupDropMenu(); });
+  }
+
+ private:
+  void PopupDropMenu() {
+    if (!dropMenu_) return;
+    if (dropMenu_->isVisible()) {
+      dropMenu_->hide();
+      return;
+    }
+    const QPoint pos = mapToGlobal(QPoint(0, height() + 2));
+    dropMenu_->exec(pos);
+  }
+
+  QMenu* dropMenu_ = nullptr;
+};
+
+// 主题菜单的选中标记：默认那枚勾（✓）换成一颗蓝点，位置仍由样式给出的
+// check 列矩形决定，所以和文字天然垂直居中，不会像自绘三角那样歪。
+class DotMenuStyle : public QProxyStyle {
+ public:
+  void drawPrimitive(PrimitiveElement e, const QStyleOption* opt, QPainter* p,
+                     const QWidget* w) const override {
+    if (e == PE_IndicatorMenuCheckMark) {
+      if (opt->state & State_On) {
+        p->save();
+        p->setRenderHint(QPainter::Antialiasing, true);
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(theme::Hex(QStringLiteral("accent"))));
+        const QRectF r = QRectF(opt->rect);
+        const qreal d = 8.0;
+        p->drawEllipse(QRectF(r.center().x() - d / 2.0, r.center().y() - d / 2.0, d, d));
+        p->restore();
+      }
+      return;
+    }
+    QProxyStyle::drawPrimitive(e, opt, p, w);
+  }
+};
 
 }  // namespace
 
@@ -98,11 +161,6 @@ void DockBar::BuildUi() {
   date_->setObjectName("DockDate");
   panelLay_->addWidget(date_);
 
-  auto* sep = new QFrame(panel_);
-  sep->setObjectName("DockSep");
-  sep->setFixedHeight(1);
-  panelLay_->addWidget(sep);
-
   auto* hideBtn = MakeDockButton(QStringLiteral("隐藏边框"), QStringLiteral(":/assets/chrome.ico"), panel_);
   connect(hideBtn, &QToolButton::clicked, this, &DockBar::HideChromeToggled);
   panelLay_->addWidget(hideBtn);
@@ -115,6 +173,30 @@ void DockBar::BuildUi() {
   auto* aboutBtn = MakeDockButton(QStringLiteral("关于"), QStringLiteral(":/assets/about.ico"), panel_);
   connect(aboutBtn, &QToolButton::clicked, this, &DockBar::AboutRequested);
   panelLay_->addWidget(aboutBtn);
+
+  // 主题：按钮上直接显示当前档位，点开选四档（深色 / 亮色 / 跟随系统 / 跟随时间）
+  themeBtn_ = new ThemeMenuButton(panel_);
+  themeBtn_->setToolTip(QStringLiteral("界面主题"));
+  themeMenu_ = new QMenu(themeBtn_);
+  themeMenu_->setStyle(new DotMenuStyle);
+  auto* group = new QActionGroup(themeMenu_);
+  group->setExclusive(true);
+  const theme::Mode kModes[] = {theme::Mode::Dark, theme::Mode::Light, theme::Mode::System,
+                                theme::Mode::Time};
+  for (theme::Mode m : kModes) {
+    QAction* a = themeMenu_->addAction(theme::ModeLabel(m));
+    a->setCheckable(true);
+    a->setActionGroup(group);
+    a->setData(static_cast<int>(m));
+    connect(a, &QAction::triggered, this, [this, m]() {
+      theme::ThemeManager::Instance().SetMode(m);
+      SyncThemeButton();
+    });
+  }
+  connect(themeMenu_, &QMenu::aboutToShow, this, &DockBar::SyncThemeButton);
+  static_cast<ThemeMenuButton*>(themeBtn_)->SetDropMenu(themeMenu_);
+  panelLay_->addWidget(themeBtn_);
+  SyncThemeButton();
 
   // 第二条分隔线：其下只放一个纯图标按钮，点一下隐藏边框，再点一下恢复
   auto* sep2 = new QFrame(panel_);
@@ -166,9 +248,14 @@ void DockBar::SetPanelWidth(int w) {
   if (w > kFullW) w = kFullW;
   const int h = height();
   const int px = parentWidget() ? parentWidget()->width() - w - kEdgeGap : x();
+  const QRect before = geometry();
   setGeometry(px, y(), w, h);
   strip_->setGeometry(0, 0, kStripW, h);
   panel_->setGeometry(kStripW, 0, kContentW, h);
+  // dock 挂在带 alpha 的主窗口上：变窄/变宽后，它原先占的那块像素没人覆盖，
+  // 半透明窗口下就会留下上一次的面板图像（残影）。让父窗口把「旧区域 + 新区域」
+  // 一次重画掉即可，代价只是一次 fillRect，动画 170ms 全程也就几十次。
+  if (QWidget* p = parentWidget()) p->update(before.united(geometry()));
 }
 
 void DockBar::Reposition() {
@@ -218,6 +305,18 @@ void DockBar::SetModules(const QList<QPair<QString, QString>>& modules) {
   Reposition();
 }
 
+void DockBar::SyncThemeButton() {
+  const theme::Mode mode = theme::ThemeManager::Instance().mode();
+  if (themeBtn_) {
+    themeBtn_->setText(theme::ModeLabel(mode));
+    themeBtn_->setToolTip(QStringLiteral("界面主题：%1").arg(theme::ModeLabel(mode)));
+  }
+  if (themeMenu_) {
+    const auto actions = themeMenu_->actions();
+    for (QAction* a : actions) a->setChecked(a->data().toInt() == static_cast<int>(mode));
+  }
+}
+
 void DockBar::SetBorderHidden(bool hidden) {
   const QString text = hidden ? QStringLiteral("显示边框") : QStringLiteral("隐藏边框");
   if (hideBtn_) hideBtn_->setText(text);
@@ -228,6 +327,7 @@ int DockBar::StripWidth() { return kStripW; }
 
 void DockBar::Expand() {
   hideTimer_->stop();
+  SyncThemeButton();
   if (!collapsed_ && !animating_) return;
   collapsed_ = false;
   animating_ = true;
