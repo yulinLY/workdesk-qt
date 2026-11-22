@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WorkDesk · 桌面端多 AI 聚合客户端</title>
-<meta name="description" content="WorkDesk 是一款原生 Qt 实现的桌面端多 AI 聚合客户端，统一管理多个 AI 服务、配置档案与性格调试，支持文件与图片直传。最新版本 v1.1.1，Windows 10/11 x64 解压即用。">
+<meta name="description" content="WorkDesk 是一款原生 Qt 实现的桌面端多 AI 聚合客户端，统一管理多个 AI 服务、配置档案与性格调试，支持文件与图片直传。最新版本 v1.1.2，提供 Windows 10/11 x64 的 .exe 安装程序，双击安装即用，项目已在 GitHub 开源。">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,8 +18,10 @@
     </a>
     <nav class="nav-links">
       <a href="#features">功能特性</a>
+      <a href="#shots">界面截图</a>
       <a href="#changelog">更新公告</a>
       <a href="#download">下载</a>
+      <a href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">GitHub</a>
       <a class="nav-cta" href="#download">立即下载</a>
     </nav>
   </div>
@@ -30,7 +32,7 @@
   <!-- ==================== 首屏 ==================== -->
   <section class="hero">
     <div class="wrap">
-      <span class="badge"><span class="dot" aria-hidden="true"></span>v1.1.1 已发布 · 2026-11-21</span>
+      <span class="badge"><span class="dot" aria-hidden="true"></span>v1.1.2 安装包已发布 · 2026-11-22</span>
 
       <h1>WorkDesk</h1>
 
@@ -40,14 +42,15 @@
       </p>
 
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#download">下载 v1.1.1</a>
+        <a class="btn btn-primary" href="#download">下载 v1.1.2 安装包</a>
         <a class="btn btn-ghost" href="#changelog">查看更新内容</a>
       </div>
 
       <div class="hero-meta">
         <span>Windows 10 / 11 x64</span>
-        <span>解压即用 · 免安装</span>
+        <span>.exe 安装程序 · 双击安装</span>
         <span>原生 Qt6 客户端</span>
+        <span>GitHub 开源</span>
       </div>
     </div>
   </section>
@@ -103,6 +106,36 @@
     </div>
   </section>
 
+  <!-- ==================== 界面截图 ==================== -->
+  <section class="section" id="shots">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-tag">Screenshots</div>
+        <h2>界面一览</h2>
+        <p>客户端实际运行截图，原生窗口、桌面 dock 与对话界面。</p>
+      </div>
+
+      <div class="shots">
+        <figure class="shot shot-wide">
+          <img src="screenshots/home.png" alt="WorkDesk 主界面" loading="lazy">
+          <figcaption>主界面：多 AI 对话与笔记面板</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="screenshots/window.png" alt="WorkDesk 独立窗口" loading="lazy">
+          <figcaption>独立窗口：可调整尺寸与置顶</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="screenshots/dock-collapsed.png" alt="桌面 dock 收起状态" loading="lazy">
+          <figcaption>桌面 dock：收起状态</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="screenshots/dock-expanded.png" alt="桌面 dock 展开状态" loading="lazy">
+          <figcaption>桌面 dock：展开状态</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <!-- ==================== 更新公告 ==================== -->
   <section class="section" id="changelog">
     <div class="wrap">
@@ -116,8 +149,45 @@
 
         <div class="log-head">
           <div class="log-title">
-            <span class="tag-ver">v1.1.1</span>
+            <span class="tag-ver">v1.1.2</span>
             <span class="tag-new">最新</span>
+          </div>
+          <div class="log-date">发布日期：2026-11-22</div>
+        </div>
+
+        <div class="log-body">
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip add">新增</span> New</div>
+            <ul class="log-list">
+              <li>新增<em>Windows 安装程序</em>：提供 <em>WorkDesk-1.1.2-setup.exe</em>，下载后双击运行安装向导即可完成安装，无需手动解压。</li>
+              <li>新增<em>GitHub 开源入口</em>：源码仓库已公开，可查阅代码、提交 Issue 与反馈建议。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip opt">优化</span> Improve</div>
+            <ul class="log-list">
+              <li>安装包内已附带全部运行依赖，装完即可直接启动，无需另行配置环境。</li>
+              <li>下载渠道统一至蓝奏云，历史版本下载入口继续长期保留。</li>
+            </ul>
+          </div>
+
+          <div class="log-group">
+            <div class="log-group-title"><span class="chip fix">说明</span> Note</div>
+            <ul class="log-list">
+              <li>本版本主要是<em>打包与分发方式更新</em>，客户端功能与 v1.1.1 保持一致；更细粒度的提交记录可在源码仓库提交历史中查看。</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="changelog">
+
+        <div class="log-head">
+          <div class="log-title">
+            <span class="tag-ver">v1.1.1</span>
           </div>
           <div class="log-date">发布日期：2026-11-21</div>
         </div>
@@ -199,59 +269,68 @@
       <div class="section-head">
         <div class="section-tag">Download</div>
         <h2>下载 WorkDesk</h2>
-        <p>免安装，解压后直接运行。无需浏览器，无需额外运行环境。</p>
+        <p>Windows 10 / 11 x64 安装程序，下载后双击安装即可使用。项目已在 GitHub 开源。</p>
+      </div>
+
+      <div class="dl-alert">
+        <span class="dl-alert-tag">.EXE</span>
+        <p>
+          本次下载的是 <strong>Windows 安装程序（.exe）</strong>，不是压缩包——
+          文件名为 <strong>WorkDesk-1.1.2-setup.exe</strong>，下载后双击运行，
+          按向导一路“下一步”即可装好，<strong>不需要解压</strong>，也不需要另外安装运行环境。
+        </p>
       </div>
 
       <div class="download-box">
 
         <div class="dl-main">
           <div class="dl-file">
-            <div class="dl-file-icon" aria-hidden="true">ZIP</div>
+            <div class="dl-file-icon exe" aria-hidden="true">EXE</div>
             <div>
-              <div class="dl-file-name">WorkDeskQt-v1.1.1-x64.zip</div>
-              <div class="dl-file-sub">版本 v1.1.1 · 2026-11-21 发布</div>
+              <div class="dl-file-name">WorkDesk-1.1.2-setup.exe</div>
+              <div class="dl-file-sub">版本 v1.1.2 · 2026-11-22 发布 · Windows 安装程序</div>
             </div>
           </div>
 
           <div class="dl-specs">
             <div class="spec">
+              <div class="spec-k">文件类型</div>
+              <div class="spec-v">.exe 安装程序（非压缩包）</div>
+            </div>
+            <div class="spec">
               <div class="spec-k">平台</div>
               <div class="spec-v">Windows 10 / 11 x64</div>
             </div>
             <div class="spec">
-              <div class="spec-k">体积</div>
-              <div class="spec-v">21.3 MB（解压后 54.8 MB）</div>
-            </div>
-            <div class="spec">
               <div class="spec-k">安装方式</div>
-              <div class="spec-v">解压即用，无需安装</div>
+              <div class="spec-v">双击安装，向导式，无需解压</div>
             </div>
             <div class="spec">
               <div class="spec-k">运行环境</div>
-              <div class="spec-v">依赖已随包附带</div>
+              <div class="spec-v">依赖随安装包一并部署</div>
             </div>
           </div>
 
           <div class="dl-actions">
-            <a class="btn btn-primary btn-download" href="https://www.ilanzou.com/s/rxUyfxTz1" target="_blank" rel="noopener">
-              下载 WorkDeskQt-v1.1.1-x64.zip
+            <a class="btn btn-primary btn-download" href="https://www.ilanzou.com/s/xu5yE9sAT" target="_blank" rel="noopener">
+              下载 WorkDesk-1.1.2-setup.exe
             </a>
-            <a class="btn btn-ghost btn-repo" href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">前往 GitHub 仓库</a>
+            <a class="btn btn-ghost btn-repo" href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">GitHub 开源仓库</a>
           </div>
-          <div class="dl-hint">压缩包不含安装程序，下载后解压到任意目录即可运行。</div>
+          <div class="dl-hint">下载页由蓝奏云提供；所下载文件为 <strong>.exe</strong> 安装程序，双击即可开始安装。</div>
         </div>
 
         <aside class="dl-side">
-          <h3>使用说明</h3>
+          <h3>安装说明</h3>
           <ol class="steps">
-            <li>将压缩包解压到任意目录（建议路径不含中文与空格）。</li>
-            <li>进入解压后的文件夹，双击运行 <strong>WorkDeskQt.exe</strong>。</li>
-            <li>首次启动后按需添加 AI 服务配置，即可开始对话。</li>
-            <li>配置文件位于 <code>%APPDATA%\WorkDesk\config.json</code>，重装或迁移时可直接备份该文件。</li>
+            <li>点击下载按钮，跳转蓝奏云页面获取 <strong>WorkDesk-1.1.2-setup.exe</strong>。</li>
+            <li>下载完成后<strong>双击安装程序</strong>，按向导选择安装位置并一路“下一步”。</li>
+            <li>安装结束后，从开始菜单或桌面快捷方式启动 <strong>WorkDesk</strong>。</li>
+            <li>配置文件位于 <code>%APPDATA%\WorkDesk\config.json</code>，重装或换机时可直接备份该文件。</li>
           </ol>
 
           <div class="dl-note">
-            提示：请保持解压后的文件结构完整，<code>.dll</code> 与 <code>platforms</code>、<code>imageformats</code> 等子目录需与 <code>WorkDeskQt.exe</code> 同级保留，移动时请整体搬运。
+            提示：首次运行若弹出 Windows SmartScreen 提示，点“更多信息”→“仍要运行”即可；需要卸载时在“设置 → 应用”中找到 WorkDesk 卸载。
           </div>
         </aside>
 
@@ -265,9 +344,17 @@
         <div class="dl-old-list">
           <div class="dl-old-item">
             <div class="dl-old-meta">
+              <span class="dl-old-ver">v1.1.2</span>
+              <span class="dl-old-name">WorkDesk-1.1.2-setup.exe</span>
+              <span class="dl-old-date">2026-11-22 发布 · 当前最新 · 安装包</span>
+            </div>
+            <a class="btn btn-ghost" href="https://www.ilanzou.com/s/xu5yE9sAT" target="_blank" rel="noopener">下载 v1.1.2</a>
+          </div>
+          <div class="dl-old-item">
+            <div class="dl-old-meta">
               <span class="dl-old-ver">v1.1.1</span>
               <span class="dl-old-name">WorkDeskQt-v1.1.1-x64.zip</span>
-              <span class="dl-old-date">2026-11-21 发布 · 当前最新</span>
+              <span class="dl-old-date">2026-11-21 发布 · 免安装压缩包</span>
             </div>
             <a class="btn btn-ghost" href="https://www.ilanzou.com/s/rxUyfxTz1" target="_blank" rel="noopener">下载 v1.1.1</a>
           </div>
@@ -275,7 +362,7 @@
             <div class="dl-old-meta">
               <span class="dl-old-ver">v1.1.0</span>
               <span class="dl-old-name">WorkDeskQt-v1.1.0-x64.zip</span>
-              <span class="dl-old-date">2026-11-15 发布</span>
+              <span class="dl-old-date">2026-11-15 发布 · 免安装压缩包</span>
             </div>
             <a class="btn btn-ghost" href="https://www.ilanzou.com/s/U37yTFDc8" target="_blank" rel="noopener">下载 v1.1.0</a>
           </div>
@@ -293,7 +380,8 @@
       <span class="brand-mark" aria-hidden="true" style="width:22px;height:22px;border-radius:7px;"></span>
       WorkDesk
     </span>
-    <span>WorkDesk Qt v1.1.1 · 桌面端多 AI 聚合客户端 · 2026</span>
+    <span>WorkDesk Qt v1.1.2 · 桌面端多 AI 聚合客户端 · 2026</span>
+    <span>开源地址：<a href="https://github.com/yulinLY/workdesk-qt" target="_blank" rel="noopener">github.com/yulinLY/workdesk-qt</a></span>
   </div>
 </footer>
 
