@@ -8,12 +8,17 @@
 #include <windows.h>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 
 #include "frost.h"
 #include "glass.h"
 #include "mainwindow.h"
+#include "markdowntoolbar.h"
+#include "musicplayer.h"
+#include "shellint.h"
 #include "smoothscroll.h"
 #include "theme.h"
+#include "tooltip.h"
 
 namespace {
 
@@ -32,6 +37,40 @@ void Boot(const char* s) {
     fprintf(f, "%s\n", s);
     fclose(f);
   }
+}
+
+// Qt 自带消息统一落盘：qFatal / qCritical 会直接 abort，GUI 进程没有控制台，
+// 不写日志就只剩一个 BEX64 崩溃事件，看不到真正死因。
+void QtLogToFile(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+  if (type < QtWarningMsg) return;
+  char buf[2048];
+  snprintf(buf, sizeof(buf), "qt[%d] %s (%s:%d)", (int)type, msg.toUtf8().constData(),
+           ctx.file ? ctx.file : "?", ctx.line);
+  Boot(buf);
+}
+
+// 未处理异常：记下异常码、出错模块与模块内偏移
+LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
+  const void* addr = (ep && ep->ExceptionRecord) ? ep->ExceptionRecord->ExceptionAddress : nullptr;
+  char modName[MAX_PATH] = "?";
+  HMODULE mod = nullptr;
+  if (addr) {
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)addr, &mod);
+    if (mod) GetModuleFileNameA(mod, modName, MAX_PATH);
+  }
+  char buf[1024];
+  snprintf(buf, sizeof(buf), "!! crash code=%08lX addr=%p module=%s off=0x%llX",
+           (unsigned long)(ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0), addr,
+           modName, (unsigned long long)(mod ? (const char*)addr - (const char*)mod : 0));
+  Boot(buf);
+  return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void OnTerminate() {
+  Boot("!! terminate (std::terminate: 未捕获异常 / 线程析构仍 joinable)");
+  std::abort();
 }
 
 // 字体全部取自系统已安装字体库：按优先级挑第一个系统里真实存在的族，
@@ -57,6 +96,10 @@ QFont PickSystemUiFont() {
 
 int main(int argc, char* argv[]) {
   Boot("-- start");
+  // 崩溃定位三件套：Qt 消息落盘 + 未处理异常 + terminate 兜底
+  qInstallMessageHandler(QtLogToFile);
+  SetUnhandledExceptionFilter(CrashFilter);
+  std::set_terminate(OnTerminate);
   QApplication app(argc, argv);
   Boot("qt app ok");
   app.setApplicationName(QStringLiteral("WorkDesk"));
@@ -76,6 +119,19 @@ int main(int argc, char* argv[]) {
   // 全局平滑滚动：拦滚轮事件，滚动条按指数逼近推进，所有可滚动控件统一生效
   wd::SmoothScroll::Install();
   Boot("smoothscroll ok");
+
+  // Markdown 工具条：任意输入框里 Ctrl+Alt 弹出，1~9 直接套格式（设置对话框内不弹）
+  wd::InstallMarkdownTools();
+  Boot("markdowntools ok");
+
+  // 提示气泡：原生 QToolTip 在亮色主题下按系统深色画底、却取亮色的深色文字（黑底黑字），
+  // 这里接管全局 ToolTip 事件，换成跟调色板走的自绘气泡
+  wd::InstallTooltips();
+  Boot("tooltips ok");
+
+  // 登记到「控制面板 / 程序和功能」：绿色程序本来不进系统列表，用户会找不到卸载入口。
+  // 指向同目录的 Uninstall.exe；不想被登记就在 exe 旁边放个 portable.txt。
+  Boot(wd::RegisterUninstallEntry() ? "uninstall entry ok" : "uninstall entry skipped");
 
   // 实时毛玻璃：窗口底交给 DWM 系统材质（亚克力），背后内容每帧由 DWM 重算，
   // 不用抓屏、不用逐帧截图，CPU 零开销，录屏和截图都能正常看到窗口。

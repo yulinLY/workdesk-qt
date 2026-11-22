@@ -1,8 +1,9 @@
-﻿#include "mainwindow.h"
+#include "mainwindow.h"
 
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDir>
+#include <QDate>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileInfo>
@@ -20,6 +21,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyle>
+#include <QTimer>
 #include <QToolButton>
 #include <QVariantAnimation>
 #include <QEvent>
@@ -34,13 +36,51 @@
 #include <windows.h>
 
 #include "chatpanel.h"
+#include "birthdaydialog.h"
 #include "dockbar.h"
 #include "frost.h"
 #include "glass.h"
+#include "musicpanel.h"
 #include "notepad.h"
 #include "settingsdialog.h"
 #include "theme.h"
 #include "wdtrace.h"
+#include "welcomedialog.h"
+
+// 单块卡片的最小宽度。面板里的工具条都已换成可收纳的 OverflowBar，280 才压得住按钮；
+// 三块并排时窗口最小宽度按它动态算（见 MainWindow::UpdateMinWidth），再窄就把右侧卡片顶出边界。
+constexpr int kMinCard = 280;
+
+// 三卡并排时，恢复出来的宽度可能来自另一块屏幕：按当前可用宽度等比归一，
+// 可见模块每块不少于 300，剩下的按原比例分。这样窗口再小也不会把卡片顶出边界。
+static void NormalizeSplitSizes(QSplitter* sp, int availWidth) {
+  if (!sp || sp->count() == 0) return;
+  const int n = sp->count();
+  int avail = availWidth - (n - 1) * sp->handleWidth();
+  if (avail <= 0) return;
+  const QList<int> cur = sp->sizes();
+  QList<int> vis;
+  double sum = 0;
+  for (int i = 0; i < n; ++i) {
+    QWidget* w = sp->widget(i);
+    if (!w || w->isHidden()) continue;
+    vis << i;
+    sum += qMax(1, cur.value(i));
+  }
+  if (vis.isEmpty() || sum <= 0) return;
+  const int kMinW = kMinCard;
+  QList<int> out(n, 0);
+  int used = 0;
+  for (int idx : vis) {
+    const int v = qMax(kMinW, int(avail * qMax(1, cur.value(idx)) / sum));
+    out[idx] = v;
+    used += v;
+  }
+  out[vis.first()] = qMax(kMinW, out[vis.first()] + (avail - used));
+  sp->setSizes(out);
+}
+
+
 
 
 namespace wd {
@@ -80,6 +120,21 @@ class CardSplitter : public QSplitter {
 
  protected:
   QSplitterHandle* createHandle() override { return new CardSplitterHandle(orientation(), this); }
+
+  // QSplitter 在总宽装不下各块最小宽度时，只会把最右侧卡片顶出边界（被窗口切掉），
+  // 不会等比让位。这里每次自身尺寸变化后按可用宽度重排一次：比例保留，每块不低于 kMinCard，
+  // 三卡并排时再也不会出现「音乐卡只剩半张脸」的样子。
+  void resizeEvent(QResizeEvent* e) override {
+    QSplitter::resizeEvent(e);
+    const int n = count();
+    if (n == 0) return;
+    const int avail = width() - (n - 1) * handleWidth();
+    if (avail <= 0) return;
+    int sum = 0;
+    for (int v : sizes()) sum += v;
+    if (sum == avail) return;
+    NormalizeSplitSizes(this, width());
+  }
 };
 
 // 布局记忆存放位置：%APPDATA%\WorkDesk\WorkDeskQt\layout.ini，和配置/会话同处
@@ -262,6 +317,34 @@ MainWindow::MainWindow() {
   wd::Trace("mw: leave");
 }
 
+// 首次启动弹欢迎向导。判断依据是 QSettings 里的 onboard_done：
+// 走完向导���跳过都会写 true，所以不会每次开机都来烦人。
+void MainWindow::MaybeShowWelcome() {
+  QSettings st(LayoutIniPath(), QSettings::IniFormat);
+  if (st.value(QStringLiteral("onboard/done"), false).toBool()) return;
+
+  WelcomeDialog dlg(&cfg_, this);
+  dlg.exec();
+  st.setValue(QStringLiteral("onboard/done"), true);
+  if (chat_) chat_->RefreshModelInfo();
+  wd::Trace("mw: welcome done");
+}
+
+// 生日彩蛋：只在「今天正好是生日」且「今年没弹过」时出现。
+// 弹过之后把年份写进 config.json，保证一年只打扰一次。
+void MainWindow::MaybeShowBirthday() {
+  if (!cfg_.hasBirthday()) return;
+  const QDate today = QDate::currentDate();
+  if (today.month() != cfg_.birthdayMonth() || today.day() != cfg_.birthdayDay()) return;
+  if (cfg_.birthdayShownYear == today.year()) return;
+
+  BirthdayDialog dlg(QString::fromStdString(cfg_.addressAs), this);
+  dlg.exec();
+  cfg_.birthdayShownYear = today.year();
+  cfg_.Save();
+  wd::Trace("mw: birthday shown");
+}
+
 MainWindow::~MainWindow() = default;
 
 QWidget* MainWindow::MakeCard(const QString& title, QWidget* content, QWidget* parent) {
@@ -296,6 +379,15 @@ QWidget* MainWindow::MakeCard(const QString& title, QWidget* content, QWidget* p
   head->setProperty("card", QVariant::fromValue<QWidget*>(card));
   lay->addWidget(head);
   lay->addWidget(content, 1);
+
+  // 三卡并排时，若把内容的最小宽度当硬下限，窗口一窄就顶出边界。
+  // 这里统一按「可压缩」处理：horizontal=Ignored 让 QSplitter 只用 minimumSize 当下限，
+  // 软下限 kMinCard 保证再窄也不会压成一条线；面板内部的工具条自己会收纳按钮。
+  card->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+  card->setMinimumSize(kMinCard, 0);
+  lay->setSizeConstraint(QLayout::SetNoConstraint);
+  content->setMinimumSize(0, 0);
+  content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
 
   cards_ << card;
   chromeHeads_ << head;
@@ -342,18 +434,73 @@ void MainWindow::BuildUi() {
   wd::Trace("mw: notepad card ok");
   noteCard->setProperty("cardId", QStringLiteral("notepad"));
 
+  // ---- 聊天 ↔ 记事本 互通
+  // 读：每次发请求，把记事本当前内容随 system 提示一起递给模型
+  chat_->SetLiveContextProvider([this]() -> std::string {
+    if (!notepad_) return std::string();
+    // 只取前 6 万字符：整篇 toPlainText() 对大文档会爆内存（bad_alloc）
+    const QString body = notepad_->PlainTextSnippet(60000);
+    const QString name = notepad_->DisplayName();
+    const QString path = notepad_->CurrentPath();
+    {
+      char b[160];
+      snprintf(b, sizeof(b), "ctx: plain=%d", (int)body.size());
+      wd::Trace(b);
+    }
+    if (body.isEmpty() && path.isEmpty()) return std::string();
+    QString head = QStringLiteral("【记事本】用户此刻在客户端打开的文档：%1").arg(name);
+    if (!path.isEmpty()) head += QStringLiteral("（路径：%1）").arg(path);
+    else head += QStringLiteral("（尚未保存到磁盘）");
+    const QString text = body;
+    QString tail = QStringLiteral(
+        "\n需要改这个文档时，不要输出 diff 或步骤说明，直接把修改后的完整内容放进一个 "
+        "```write 代码块；回复结束时这段内容会自动导入记事本，由用户在记事本底部选「同意」或「不同意」。"
+        "如果用户只是提问，就正常回答，不要输出 write 块。");
+    return (head + QStringLiteral("\n<<<DOC\n") + text + QStringLiteral("\nDOC>>>") + tail)
+        .toStdString();
+  });
+  // 写：模型给出 write 块，用户点按钮 -> 整篇写进记事本（可 Ctrl+Z 撤回）
+  connect(chat_, &ChatPanel::WriteToNotepad, this, [this, noteCard](const QString& text) {
+    if (!notepad_) return;
+    notepad_->ReplaceAllText(text);
+    // 写回后把右侧记事本亮出来，避免用户以为没反应
+    const int ai = hsplit_ ? hsplit_->indexOf(noteCard) : -1;
+    if (ai >= 0 && hsplit_->sizes().value(ai) <= 0) {
+      const int n = qMax(1, hsplit_->count());
+      QList<int> even;
+      for (int i = 0; i < n; ++i) even << hsplit_->width() / n;
+      hsplit_->setSizes(even);
+    }
+  });
+
+  // 音乐模块：界面只负责摆列表和控件，播放状态全在 MusicPlayer 单例里，
+  // 卡片被隐藏/拖动换位都不影响正在放的歌。
+  music_ = new MusicPanel(root_);
+  musicCard_ = MakeCard(QStringLiteral("音乐"), music_, root_);
+  musicCard_->setProperty("cardId", QStringLiteral("music"));
+
   hsplit_ = new CardSplitter(Qt::Horizontal, root_);
   hsplit_->setHandleWidth(kSplitHandleW);
   hsplit_->addWidget(chatCard);
   hsplit_->addWidget(noteCard);
+  hsplit_->addWidget(musicCard_);
   hsplit_->setChildrenCollapsible(false);
   hsplit_->setStretchFactor(0, 3);
   hsplit_->setStretchFactor(1, 2);
-
+  hsplit_->setStretchFactor(2, 2);
   rl->addWidget(hsplit_, 1);
 
   setCentralWidget(root_);
   chat_->FocusInput();
+
+  // 诊断自测：WORKDESK_SELFTEST_DOC=<路径> 时启动即打开该文档，用于复现「记事本有文档时发送崩溃」
+  if (const char* doc = std::getenv("WORKDESK_SELFTEST_DOC")) {
+    const QString p = QString::fromUtf8(doc);
+    const bool ok = notepad_ && notepad_->OpenPath(p);
+    char b[512];
+    snprintf(b, sizeof(b), "selftest: doc open=%d path=%s", (int)ok, doc);
+    wd::Trace(b);
+  }
 }
 
 void MainWindow::BuildDock() {
@@ -453,7 +600,18 @@ void MainWindow::paintEvent(QPaintEvent* e) {
 
 void MainWindow::showEvent(QShowEvent* e) {
   QMainWindow::showEvent(e);
+  if (hsplit_) NormalizeSplitSizes(hsplit_, hsplit_->width());
   LayoutDock();
+  // 只跑一次：用静态标记挡住"最小化再还原"这类重复 showEvent
+  static bool startupDone = false;
+  if (startupDone) return;
+  startupDone = true;
+  // 用单次定时器推到事件循环里，等窗口真正呈现、DWM 材质挂上之后再弹，
+  // 否则模态框会比主窗口先出现，背景一片黑。
+  QTimer::singleShot(260, this, [this]() {
+    MaybeShowWelcome();
+    MaybeShowBirthday();
+  });
 }
 
 void MainWindow::ToggleChrome() { SetChromeHidden(!chromeHidden_); }
@@ -475,6 +633,7 @@ void MainWindow::SetChromeHidden(bool hide) {
   }
   if (dock_) dock_->SetBorderHidden(hide);
   if (hide && dock_) dock_->Collapse();
+  UpdateMinWidth();
   LayoutDock();
 }
 
@@ -483,10 +642,23 @@ void MainWindow::RestoreLayout() {
   const QByteArray h = st.value("layout/hsplit").toByteArray();
   if (!h.isEmpty()) hsplit_->restoreState(h);
   // 布局记忆可能来自不同分辨率或异常退出，尺寸不合理就回落到默认，避免某侧被压成 0
-  if (hsplit_->sizes().value(0) < 320 || hsplit_->sizes().value(1) < 320)
-    hsplit_->setSizes({900, 520});
+  // 模块数量不固定（对话 / 记事本 / 音乐…），尺寸检查一律按实际个数来：
+  // 任一模块被压到 320 以下就按等分重排，而不是假定只有两块。
+  const QList<int> cur = hsplit_->sizes();
+  bool bad = cur.isEmpty();
+  for (int v : cur) {
+    if (v < 320) bad = true;
+  }
+  if (bad) {
+    // 尺寸不可用（空 / 某块被压没）：按等分给一个起点，后面统一归一化
+    const int n = qMax(1, hsplit_->count());
+    QList<int> even;
+    for (int i = 0; i < n; ++i) even << (i == 0 ? 420 : 280);  // 对话卡给宽一点
+    hsplit_->setSizes(even);
+  }
+  NormalizeSplitSizes(hsplit_, width() - 10 - DockBar::StripWidth());
   // 模块左右顺序也记下来，下次启动保持用户拖出来的排列
-  const QString order = st.value("layout/order", QStringLiteral("chat,notepad")).toString();
+  const QString order = st.value("layout/order", QStringLiteral("chat,notepad,music")).toString();
   ApplyCardOrder(order.split(',', Qt::SkipEmptyParts));
   // 隐藏的模块也要一起恢复，否则重启后界面和上次关窗时长得不一样
   hiddenIds_ = st.value(QStringLiteral("layout/hidden")).toString().split(',', Qt::SkipEmptyParts);
@@ -497,6 +669,7 @@ void MainWindow::RestoreLayout() {
   const QByteArray geo = st.value("layout/geometry").toByteArray();
   if (!geo.isEmpty()) restoreGeometry(geo);
   if (width() < 900 || height() < 600) resize(1440, 920);
+  UpdateMinWidth();
   LayoutDock();
 }
 
@@ -537,7 +710,7 @@ void MainWindow::ApplyCardOrder(const QStringList& order) {
   const QList<int> sizes = hsplit_->sizes();
   for (QWidget* w : want) w->setParent(root_);
   for (int i = 0; i < want.size(); ++i) hsplit_->insertWidget(i, want[i]);
-  hsplit_->setSizes(sizes);
+  if (sizes.size() == want.size()) hsplit_->setSizes(sizes);
 }
 
 QWidget* MainWindow::CardAtGlobal(const QPoint& gp) const {
@@ -632,6 +805,7 @@ void MainWindow::HideModule(QWidget* card) {
   if (!hiddenIds_.contains(id)) hiddenIds_ << id;
   SyncDockModules();
   SaveLayout();
+  UpdateMinWidth();
   LayoutDock();
 }
 
@@ -640,15 +814,45 @@ void MainWindow::RestoreModule(const QString& id) {
   if (!card) return;
   hiddenIds_.removeAll(id);
   card->show();
-  // 刚回来的模块可能被压成一条缝，按原比例重新摊开
+  // 刚回来的模块可能被压成一条缝：任一模块小于 120 就把整排按比例摊开，
+  // 不假定只有两块，加音乐模块后依然成立。
   QList<int> sz = hsplit_->sizes();
-  if (sz.size() == 2 && (sz.value(0) < 120 || sz.value(1) < 120)) {
-    const int total = (sz.value(0) + sz.value(1)) > 400 ? (sz.value(0) + sz.value(1)) : 1320;
-    hsplit_->setSizes({total * 3 / 5, total * 2 / 5});
+  bool squeezed = false;
+  for (int v : sz) {
+    if (v < 120) squeezed = true;
+  }
+  if (squeezed) {
+    int total = 0;
+    for (int v : sz) total += v;
+    if (total < 400) total = 1400;
+    const int n = qMax(1, sz.size());
+    // 原来有两块时保持 3:2（对话多留一点），多块时等分
+    QList<int> want;
+    if (n == 2) {
+      want << total * 3 / 5 << total * 2 / 5;
+    } else {
+      for (int i = 0; i < n; ++i) want << total / n;
+    }
+    hsplit_->setSizes(want);
   }
   SyncDockModules();
   SaveLayout();
+  UpdateMinWidth();
   LayoutDock();
+}
+
+// 三块卡片同时打开时，可用宽度 = 窗口宽 - 四周留白 - 两个分隔条；
+// 三块各要 kMinCard，小于这个宽度就会被 QSplitter 顶出右边界（右侧卡片被窗口切掉）。
+// 把窗口最小宽度钉在这个值上，用户就拖不到那种「破相」的尺寸；隐藏模块后自动放宽。
+void MainWindow::UpdateMinWidth() {
+  int n = 0;
+  for (QWidget* c : cards_) {
+    if (c && !c->isHidden()) ++n;
+  }
+  n = qMax(1, n);
+  const int chrome = chromeHidden_ ? 0 : (10 + DockBar::StripWidth());
+  const int w = chrome + n * kMinCard + (n - 1) * kSplitHandleW + 2;
+  setMinimumWidth(w);
 }
 
 void MainWindow::SyncDockModules() {

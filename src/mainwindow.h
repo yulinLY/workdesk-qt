@@ -15,6 +15,7 @@ namespace wd {
 
 class ChatPanel;
 class DockBar;
+class MusicPanel;
 class NotepadPanel;
 
 // 主窗口：模块卡片式布局，左右分栏可用分隔条自由拖动改变大小（尺寸记忆在 QSettings）。
@@ -51,6 +52,10 @@ class MainWindow : public QMainWindow {
   void RoutePaths(const QStringList& paths, bool preferChat = false);
   void RestoreLayout();
   void SaveLayout();
+  // 首次启动的欢迎向导（走完或跳过都会落一个标记，之后不再弹）
+  void MaybeShowWelcome();
+  // 生日彩蛋：今天正好是生日、今年还没弹过，才弹
+  void MaybeShowBirthday();
   void ToggleChrome();
   void SetChromeHidden(bool hide);
   void LayoutDock();
@@ -64,6 +69,9 @@ class MainWindow : public QMainWindow {
   void HideModule(QWidget* card);
   void RestoreModule(const QString& id);
   void SyncDockModules();
+  // 窗口最小宽度随「当前可见模块数」走：三块全开时不把最右侧卡片顶出边界，
+  // 隐藏一块之后窗口就能继续往窄里缩。
+  void UpdateMinWidth();
   QWidget* CardById(const QString& id) const;
   int VisibleCardCount() const;
   // 拖动时跟着鼠标走的那块半透明拖影
@@ -76,6 +84,8 @@ class MainWindow : public QMainWindow {
   Config cfg_;
   ChatPanel* chat_ = nullptr;
   NotepadPanel* notepad_ = nullptr;
+  MusicPanel* music_ = nullptr;
+  QWidget* musicCard_ = nullptr;
   DockBar* dock_ = nullptr;
   QSplitter* hsplit_ = nullptr;
   QWidget* root_ = nullptr;

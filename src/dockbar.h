@@ -51,11 +51,14 @@ class DockBar : public QWidget {
  protected:
   void enterEvent(QEnterEvent* e) override;
   void leaveEvent(QEvent* e) override;
+  bool eventFilter(QObject* o, QEvent* e) override;
 
  private:
   void SetPanelWidth(int w);
   void BuildUi();
   void TickClock();
+  void BuildMiniPlayer();
+  void TickMini();
 
   QWidget* strip_ = nullptr;
   QWidget* panel_ = nullptr;
@@ -72,6 +75,14 @@ class DockBar : public QWidget {
   QVBoxLayout* modLay_ = nullptr;
   QTimer* clock_ = nullptr;
   QTimer* hideTimer_ = nullptr;
+  QTimer* miniTimer_ = nullptr;
+  QFrame* miniSep_ = nullptr;
+  QWidget* miniBox_ = nullptr;
+  QLabel* miniTitle_ = nullptr;
+  QToolButton* miniPrev_ = nullptr;
+  QToolButton* miniPlay_ = nullptr;
+  QToolButton* miniNext_ = nullptr;
+  QString miniKey_;
   QPropertyAnimation* anim_ = nullptr;
   int anchorTop_ = 0;
   int anchorH_ = 0;

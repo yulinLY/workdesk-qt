@@ -173,7 +173,8 @@ class TextBlock : public MdBlockWidget {
 // ------------------------------------------------------------------ 代码块
 class CodeBlock : public MdBlockWidget {
  public:
-  explicit CodeBlock(QWidget* p) : MdBlockWidget(p) {
+  explicit CodeBlock(QWidget* p, std::function<void(const QString&)> onWrite = nullptr)
+      : MdBlockWidget(p), onWrite_(std::move(onWrite)) {
     auto* frame = new QFrame(this);
     frame->setObjectName("CodeWrap");  // 配色在全局 QSS 里，随主题切换
 
@@ -209,6 +210,17 @@ class CodeBlock : public MdBlockWidget {
       QTimer::singleShot(1200, copy_, [this]() { copy_->setText(QStringLiteral("复制")); });
     });
     hl->addWidget(copy_);
+
+    // ```write 块在回复结束时已自动导入记事本；这里留一个手动重来的入口
+    write_ = new QPushButton(QStringLiteral("重新导入记事本"), head);
+    write_->setCursor(Qt::PointingHandCursor);
+    write_->setObjectName("CodeCopy");
+    write_->setToolTip(QStringLiteral("回复结束时已自动导入过，点这里可再导入一次（记事本里可选同意/不同意）"));
+    write_->setVisible(false);
+    connect(write_, &QPushButton::clicked, this, [this]() {
+      if (onWrite_) onWrite_(code_);
+    });
+    hl->addWidget(write_);
 
     lay->addWidget(head);
 
@@ -261,6 +273,10 @@ class CodeBlock : public MdBlockWidget {
       copy_->setText(QStringLiteral("复制"));
     }
     langLab_->setText(FromUtf8(LangDisplayName(curLang_)));
+    // 只有 ```write 块才给写回按钮，普通代码块不打扰
+    const bool isWrite = (curLang_ == "write" || curLang_ == "md-write");
+    if (write_) write_->setVisible(isWrite && !code_.isEmpty());
+    if (isWrite) langLab_->setText(QStringLiteral("记事本内容"));
     const int lines = code_.isEmpty() ? 1 : (code_.count(QLatin1Char('\n')) + 1);
     info_->setText(QStringLiteral("%1 行").arg(lines));
     Adjust(lines);
@@ -285,6 +301,8 @@ class CodeBlock : public MdBlockWidget {
   QLabel* langLab_ = nullptr;
   QLabel* info_ = nullptr;
   QPushButton* copy_ = nullptr;
+  QPushButton* write_ = nullptr;
+  std::function<void(const QString&)> onWrite_;
   QPlainTextEdit* edit_ = nullptr;
   std::unique_ptr<CodeHighlighter> hl_;
   QString code_;
@@ -523,7 +541,7 @@ void MessageBubble::SyncBlocks(bool force) {
     for (const auto& b : blocks) {
       MdBlockWidget* w = nullptr;
       if (b.kind == MdBlock::Code)
-        w = new CodeBlock(content_);
+        w = new CodeBlock(content_, [this](const QString& t) { emit WriteRequested(t); });
       else if (b.kind == MdBlock::Table)
         w = new TableBlock(content_);
       else

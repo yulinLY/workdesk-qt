@@ -8,6 +8,7 @@
 #include <QStyleHints>
 #include <QTime>
 #include <QTimer>
+#include <QToolTip>
 #include <QVector>
 
 namespace wd {
@@ -204,10 +205,22 @@ bool ThemeManager::Resolve(Mode m) const {
 
 void ThemeManager::Apply() {
   light_ = Resolve(mode_);
+  const QPalette pal = theme::Palette(light_);
   if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
-    app->setPalette(theme::Palette(light_));
-    app->setStyleSheet(theme::Css(light_));
+    app->setPalette(pal);
+    // QSS 模板靠 @token@ 填色，提示气泡在部分平台上会忽略其中的半透明/圆角组合而回落到深色。
+    // 这里再追加一条纯 hex 的兜底规则，保证亮色模式下气泡也是浅底深字。
+    QString qss = theme::Css(light_);
+    qss += QStringLiteral(
+               "\nQToolTip{background-color:%1;color:%2;border:1px solid %3;border-radius:6px;"
+               "padding:5px 8px;font-size:12px;}")
+               .arg(pal.color(QPalette::ToolTipBase).name(), pal.color(QPalette::ToolTipText).name(),
+                    pal.color(QPalette::Mid).name());
+    app->setStyleSheet(qss);
   }
+  // 提示气泡是顶层工具窗，用的是 QToolTip 自己的静态调色板（启动时从当时的主题克隆），
+  // 只改 QApplication 的调色板不会刷新它，切到亮色后提示框依旧是黑底。这里强制同步一次。
+  QToolTip::setPalette(pal);
   emit Applied(light_);
 }
 

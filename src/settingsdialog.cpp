@@ -40,14 +40,37 @@ namespace {
 struct Preset {
   const char* name;
   const char* baseUrl;
-  const char* model;
+  const char* models;  // 逗号分隔的候选：第一个是默认值，其余进「模型」下拉
 };
 
 const Preset kPresets[] = {
-    {"智谱 GLM", "https://open.bigmodel.cn/api/paas/v4", "glm-4.6"},
-    {"DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"},
-    {"OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"},
-    {"本地 Ollama（OpenAI 兼容）", "http://127.0.0.1:11434/v1", "qwen2.5:7b"},
+    {"智谱 GLM", "https://open.bigmodel.cn/api/paas/v4",
+     "glm-4.6,glm-4.5,glm-4.5-air,glm-4-plus,glm-4-flash"},
+    {"DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat,deepseek-reasoner"},
+    {"OpenAI", "https://api.openai.com/v1", "gpt-4o-mini,gpt-4o,gpt-4.1,gpt-4.1-mini,o4-mini"},
+    {"通义千问（阿里云百炼）", "https://dashscope.aliyuncs.com/compatible-mode/v1",
+     "qwen-plus,qwen-max,qwen-turbo,qwen3-max,qwen3-235b-a22b"},
+    {"月之暗面 Kimi", "https://api.moonshot.cn/v1",
+     "kimi-latest,moonshot-v1-32k,moonshot-v1-128k,kimi-k2-0711-preview"},
+    {"字节 火山方舟（豆包）", "https://ark.cn-beijing.volces.com/api/v3",
+     "doubao-seed-1-6-250615,doubao-1-5-pro-32k-250115,deepseek-v3-250324"},
+    {"百度千帆", "https://qianfan.baidubce.com/v2",
+     "ernie-4.5-turbo-128k,ernie-4.5-8k-preview,ernie-4.0-8k,deepseek-v3"},
+    {"腾讯混元", "https://api.hunyuan.cloud.tencent.com/v1",
+     "hunyuan-turbos-latest,hunyuan-large-latest,hunyuan-standard-latest"},
+    {"硅基流动 SiliconFlow", "https://api.siliconflow.cn/v1",
+     "Qwen/Qwen3-8B,deepseek-ai/DeepSeek-V3,Qwen/Qwen2.5-72B-Instruct"},
+    {"阶跃星辰 StepFun", "https://api.stepfun.com/v1", "step-2-16k,step-1-8k,step-1-flash"},
+    {"百川智能", "https://api.baichuan-ai.com/v1", "Baichuan4-Turbo,Baichuan4,Baichuan3-Turbo"},
+    {"MiniMax", "https://api.minimax.chat/v1", "MiniMax-Text-01,abab6.5s-chat"},
+    {"xAI Grok", "https://api.x.ai/v1", "grok-4,grok-3,grok-3-mini"},
+    {"Mistral", "https://api.mistral.ai/v1",
+     "mistral-large-latest,mistral-small-latest,open-mistral-nemo"},
+    {"Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile,llama-3.1-8b-instant"},
+    {"OpenRouter", "https://openrouter.ai/api/v1",
+     "openai/gpt-4o-mini,anthropic/claude-sonnet-4,google/gemini-2.5-flash,deepseek/deepseek-chat"},
+    {"本地 Ollama", "http://127.0.0.1:11434/v1", "qwen2.5:7b,llama3.1:8b,deepseek-r1:7b"},
+    {"本地 LM Studio", "http://127.0.0.1:1234/v1", "qwen2.5-7b-instruct"},
     {"自定义", "", ""},
 };
 const int kPresetCount = (int)(sizeof(kPresets) / sizeof(kPresets[0]));
@@ -151,8 +174,14 @@ void SettingsDialog::BuildUi() {
   baseUrl_->setPlaceholderText(QStringLiteral("https://api.deepseek.com/v1"));
   form->addRow(QStringLiteral("接口地址"), baseUrl_);
 
-  model_ = new QLineEdit(apiPage);
-  model_->setPlaceholderText(QStringLiteral("deepseek-chat"));
+  // 模型：可下拉选（跟服务商自动带出候选），也能直接手输表里没有的新模型
+  model_ = new QComboBox(apiPage);
+  model_->setEditable(true);
+  model_->setInsertPolicy(QComboBox::NoInsert);
+  model_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+  model_->setMinimumWidth(260);
+  model_->lineEdit()->setPlaceholderText(QStringLiteral("deepseek-chat"));
+  model_->lineEdit()->setClearButtonEnabled(true);
   form->addRow(QStringLiteral("模型"), model_);
 
   apiKey_ = new QLineEdit(apiPage);
@@ -170,8 +199,9 @@ void SettingsDialog::BuildUi() {
   apiLay->addStretch(1);
 
   auto* apiTip = new QLabel(
-      QStringLiteral("接口地址填到 /v1 即可，程序自动补 /chat/completions。全部配置存在 "
-                     "%APPDATA%\\WorkDesk\\config.json，与旧版通用。"),
+      QStringLiteral("接口地址填到 /v1（或该服务商的等价前缀）即可，程序自动补 /chat/completions。\n"
+                     "「模型」可以从下拉候选里选，也能直接手输新模型名。\n"
+                     "全部配置存在 %APPDATA%\\WorkDesk\\config.json，与旧版通用。"),
       apiPage);
   apiTip->setObjectName("ModuleHint");
   apiTip->setWordWrap(true);
@@ -297,7 +327,8 @@ void SettingsDialog::LoadFormFromProfile(int idx) {
   }
   provider_->setCurrentIndex(match);
   baseUrl_->setText(QString::fromStdString(p.baseUrl));
-  model_->setText(QString::fromStdString(p.model));
+  // 候选按服务商重新灌一遍，再把当前模型放上去（手输过的自定义模型照样保留）
+  FillModelCandidates(match, QString::fromStdString(p.model));
   apiKey_->setText(QString::fromStdString(p.apiKey));
   temp_->setValue(p.temperature);
 
@@ -329,7 +360,7 @@ void SettingsDialog::SaveFormToProfile(int idx) {
 
   p.provider = provider_->currentText().toStdString();
   p.baseUrl = baseUrl_->text().trimmed().toStdString();
-  p.model = model_->text().trimmed().toStdString();
+  p.model = model_->currentText().trimmed().toStdString();
   p.apiKey = apiKey_->text().trimmed().toStdString();
   p.temperature = temp_->value();
 
@@ -442,13 +473,40 @@ void SettingsDialog::OnDeleteProfile() {
 void SettingsDialog::ApplyProviderPreset(int idx) {
   if (idx < 0 || idx >= kPresetCount - 1) return;  // 自定义：不动已有内容
   baseUrl_->setText(QString::fromUtf8(kPresets[idx].baseUrl));
-  model_->setText(QString::fromUtf8(kPresets[idx].model));
+  // 换服务商时把该家的候选模型一起带出来，默认选第一个
+  FillModelCandidates(idx, QString());
+}
+
+// 候选来自预设里逗号分隔的模型串；keep 非空则把它设成当前值（不在候选里就补一条），
+// 这样手输的自定义模型在切换配置、重开设置时都不会被抹掉。
+void SettingsDialog::FillModelCandidates(int presetIdx, const QString& keep) {
+  if (!model_) return;
+  const bool blocked = model_->blockSignals(true);
+  model_->clear();
+  if (presetIdx >= 0 && presetIdx < kPresetCount) {
+    const char* csv = kPresets[presetIdx].models;
+    const QString all = QString::fromUtf8(csv ? csv : "");
+    for (const QString& one : all.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+      const QString t = one.trimmed();
+      if (!t.isEmpty() && model_->findText(t, Qt::MatchFixedString) < 0) model_->addItem(t);
+    }
+  }
+  const QString k = keep.trimmed();
+  if (!k.isEmpty()) {
+    if (model_->findText(k, Qt::MatchFixedString) < 0) model_->addItem(k);
+    model_->setCurrentText(k);
+  } else if (model_->count() > 0) {
+    model_->setCurrentIndex(0);
+  } else {
+    model_->setEditText(QString());
+  }
+  model_->blockSignals(blocked);
 }
 
 bool SettingsDialog::Commit() {
   if (!cfg_) return false;
   const QString url = baseUrl_->text().trimmed();
-  const QString modelName = model_->text().trimmed();
+  const QString modelName = model_->currentText().trimmed();
   if (url.isEmpty() || modelName.isEmpty()) {
     QMessageBox::warning(this, QStringLiteral("配置不完整"),
                          QStringLiteral("接口地址和模型名都必须填写。"));
@@ -473,7 +531,7 @@ bool SettingsDialog::Commit() {
 void SettingsDialog::TestConnection() {
   if (probe_ && probe_->Running()) return;
   const QString url = baseUrl_->text().trimmed();
-  const QString modelName = model_->text().trimmed();
+  const QString modelName = model_->currentText().trimmed();
   if (url.isEmpty() || modelName.isEmpty()) {
     probeLab_->setText(QStringLiteral("先填接口地址和模型"));
     return;

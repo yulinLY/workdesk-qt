@@ -1,35 +1,54 @@
-# 构建产物
+# ---- CMake / Ninja 构建树 ----
 build/
 build-*/
-out/
-*.obj
-*.pdb
-*.ilk
-*.exp
-*.lib
-*.exe
-*.dll
-
-# Qt / CMake 生成物
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-*.user
-*.autosave
+CMakeLists.txt.user
+*.ninja
+.ninja_deps
+.ninja_log
+_autogen/
+*_autogen/
+.qt/
+.qtc_clangd/
+
+# ---- 编译产物 ----
+*.obj
+*.o
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+*.a
+*.exe
+*.dll
+*.so
+*.dylib
 moc_*.cpp
+moc_*.h
 qrc_*.cpp
 ui_*.h
+*.res
 
-# 本地配置与日志（含 API Key，切勿提交）
-config.json
-*.log
+# ---- 构建 / 部署日志 ----
 boot.log
+build_out*.txt
 deploy.log
 deploy.err
+err.txt
+out.txt
 
-# 编辑器与系统
-.vs/
+# ---- 本地备份 ----
+*.bak
+*.orig
+*.rej
+*~
+
+# ---- 编辑器 / IDE ----
 .vscode/
-.idea/
+.vs/
+*.swp
+.DS_Store
 Thumbs.db
-desktop.ini

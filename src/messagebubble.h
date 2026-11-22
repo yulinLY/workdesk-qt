@@ -35,6 +35,8 @@ class MessageBubble : public QWidget {
   void ImageClicked(const QString& filePath);
   // 附件/图片被点开：统一交给 ChatPanel 用系统默认程序打开（图片在原始文件丢失时回落到内存数据）
   void FileClicked(const QString& filePath, int imageIndex);
+  // AI 给出 ```write 代码块后，用户点「写入记事本」触发
+  void WriteRequested(const QString& text);
 
  protected:
   void resizeEvent(QResizeEvent* e) override;

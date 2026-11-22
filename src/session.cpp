@@ -208,11 +208,13 @@ std::string MakeTitle(const std::vector<ChatMessage>& msgs) {
 std::string MakeSessionTitle(const std::vector<ChatMessage>& msgs) { return MakeTitle(msgs); }
 
 std::string BuildRequestBody(const Config& cfg, const std::vector<ChatMessage>& msgs,
-                             int upToIndex) {
+                             int upToIndex, const std::string& extraSystem) {
   json messages = json::array();
 
   // 系统提示词 + 性格设定拼装（见 Config::BuildSystemPrompt）
   std::string sys = cfg.BuildSystemPrompt();
+  // 记事本互通：把当前打开文档随请求一起递给模型
+  if (!extraSystem.empty()) sys += "\n\n" + extraSystem;
   messages.push_back({{"role", "system"}, {"content", sys}});
 
   // 只带最近 60 条，避免长会话 token 无限膨胀

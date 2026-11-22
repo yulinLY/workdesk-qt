@@ -129,6 +129,14 @@
           <div class="log-group">
             <div class="log-group-title"><span class="chip add">新增</span> New</div>
             <ul class="log-list">
+              <li>新增<em>音乐模块</em>：本地曲库按文件夹分组，可导入文件夹或单曲、随时重扫增删；曲库记录写入 <code>%APPDATA%\WorkDesk\music.json</code>。内置封面与曲目信息、逐行歌词、顺序/单曲/随机三种模式，音频文件拖进窗口即可入库并直接播放。</li>
+              <li>新增 <em>dock 栏迷你播放器</em>：上一首 / 播放暂停 / 下一首常驻收起状态，模块隐藏或切到别的模块时播放不中断。</li>
+              <li>新增<em>首次启动欢迎向导</em>：分步填写服务商、接口地址、模型与密钥，可就地测试连通性，再设定性格与生日；走完或跳过都会落标记，之后不再弹出。</li>
+              <li>新增<em>生日彩蛋</em>：生日当天（一年只弹一次）出现蛋糕动画，按住空格吹灭蜡烛后可许愿；生日仅保存在本机 <code>config.json</code> 中。</li>
+              <li>新增<em>全局 Markdown 工具条</em>：在任意可编辑输入框内按 <code>Ctrl+Alt</code>，工具条浮在光标旁，按 <code>1~9</code> 或点条目即可套用标题、粗体、斜体、列表等格式。</li>
+              <li>记事本新增 <em>Markdown 实时渲染</em>与「隐藏标记符」开关，可随时切回纯文本编辑。</li>
+              <li>新增 <em>AI 写回记事本</em>：聊天内容可写入当前文档，底部给出「同意 / 不同意」，不同意则整篇退回写回前状态，整次写回只占一步撤销。</li>
+              <li>新增<em>卸载程序 Uninstall.exe</em>，并把 WorkDesk 登记进「控制面板 / 程序和功能」，系统与第三方卸载工具都能识别并调用；在 exe 旁放空文件 <code>portable.txt</code> 或设环境变量 <code>WORKDESK_NO_REGISTRY=1</code> 可不登记。</li>
               <li>新增<em>Windows 安装程序</em>：提供 <em>WorkDesk-1.1.2-setup.exe</em>，下载后双击运行安装向导即可完成安装，无需手动解压。</li>
               <li>新增<em>GitHub 开源入口</em>：源码仓库已公开，可查阅代码、提交 Issue 与反馈建议。</li>
             </ul>
@@ -137,6 +145,13 @@
           <div class="log-group">
             <div class="log-group-title"><span class="chip opt">优化</span> Improve</div>
             <ul class="log-list">
+              <li>主窗口支持拖动模块卡片调换位置（带拖影与平滑滑动）；模块可隐藏，右侧 dock 栏保留还原入口；窗口最小宽度随可见模块数自动收窄。</li>
+              <li>dock 栏补齐时钟、主题切换、隐藏界面边框与模块还原入口，主界面不再放文字提示。</li>
+              <li>工具栏改为<em>自适应收放</em>：卡片被拖窄时按优先级把次要按钮收进「⋯」菜单，宽度回来自动放回，不再把按钮文字压成残缺字形。</li>
+              <li>提示气泡改为自绘：接管系统原生 QToolTip，解决亮色模式下「黑底黑字」，主题切换时颜色即时跟随。</li>
+              <li>实时毛玻璃交由 DWM 系统材质承担，每帧由系统重算、CPU 零开销，录屏与截图均正常；仅在系统材质挂不上时才回退到快照磨砂。</li>
+              <li>启动日志补强：Qt 日志与未处理异常（异常码、故障模块与偏移）一并写入 <code>boot.log</code>，便于排查启动崩溃；设 <code>WORKDESK_NO_BOOTLOG=1</code> 可关闭。</li>
+              <li>对话发请求前自动带上当前打开文档的开头片段作为上下文，且只取片段、不复制整篇，超大文档不再有内存风险。</li>
               <li>安装包内已附带全部运行依赖，装完即可直接启动，无需另行配置环境。</li>
               <li>下载渠道统一至蓝奏云，历史版本下载入口继续长期保留。</li>
             </ul>
@@ -145,7 +160,7 @@
           <div class="log-group">
             <div class="log-group-title"><span class="chip fix">说明</span> Note</div>
             <ul class="log-list">
-              <li>本版本主要是<em>打包与分发方式更新</em>，客户端功能与 v1.1.1 保持一致；更细粒度的提交记录可在源码仓库提交历史中查看。</li>
+              <li>本版本除打包与分发方式更新外，客户端本体亦有较多改动，以上条目均对应源码仓库中的实际改动；更细粒度的提交记录可在源码仓库提交历史中查看。</li>
             </ul>
           </div>
 

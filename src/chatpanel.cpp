@@ -1,5 +1,12 @@
 #include "chatpanel.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+
+#include "overflowbar.h"
+#include "wdtrace.h"
+
 #include <QBuffer>
 #include <QComboBox>
 #include <QDateTime>
@@ -44,6 +51,20 @@ namespace wd {
 namespace {
 
 QString FromUtf8(const std::string& s) { return QString::fromStdString(s); }
+
+// 从回复里挑出最后一个 ```write 块：AI 用这个块表达"整篇新文档"，流式结束后直接导入记事本
+bool PickWriteBlock(const std::string& md, QString* out) {
+  if (!out) return false;
+  const std::vector<MdBlock> blocks = ParseBlocks(md);
+  const MdBlock* pick = nullptr;
+  for (const MdBlock& b : blocks) {
+    if (b.kind != MdBlock::Code) continue;
+    if (b.lang == "write" || b.lang == "md-write") pick = &b;
+  }
+  if (!pick || pick->text.empty()) return false;
+  *out = FromUtf8(pick->text);
+  return true;
+}
 
 bool IsImagePath(const QString& p) {
   const QString e = QFileInfo(p).suffix().toLower();
@@ -204,33 +225,32 @@ void ChatPanel::BuildUi() {
   root->setContentsMargins(0, 0, 0, 0);
   root->setSpacing(8);
 
-  // 顶部工具栏
-  auto* bar = new QWidget(this);
-  auto* barLay = new QHBoxLayout(bar);
-  barLay->setContentsMargins(0, 0, 0, 0);
-  barLay->setSpacing(6);
+  // 顶部工具栏：会话下拉框可以压到很窄，导入/导出/删除在卡片变窄时收进「⋯」，
+  // 「新对话」永远留在条上（三卡并排时最常用的入口）。
+  auto* bar = new OverflowBar(this);
+  bar->SetSpacing(6);
 
   sessionBox_ = new QComboBox(bar);
-  sessionBox_->setMinimumWidth(220);
+  sessionBox_->setMinimumWidth(96);
   sessionBox_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   connect(sessionBox_, QOverload<int>::of(&QComboBox::activated), this, &ChatPanel::LoadSessionAt);
-  barLay->addWidget(sessionBox_, 1);
+  bar->Add(sessionBox_, 0, 1);
 
   auto* newBtn = new QPushButton(QStringLiteral("新对话"), bar);
   connect(newBtn, &QPushButton::clicked, this, &ChatPanel::NewSession);
-  barLay->addWidget(newBtn);
+  bar->Add(newBtn, 0);
 
   auto* impBtn = new QPushButton(QStringLiteral("导入"), bar);
   connect(impBtn, &QPushButton::clicked, this, &ChatPanel::ImportSession);
-  barLay->addWidget(impBtn);
+  bar->Add(impBtn, 1);
 
   auto* expBtn = new QPushButton(QStringLiteral("导出"), bar);
   connect(expBtn, &QPushButton::clicked, this, &ChatPanel::ExportCurrent);
-  barLay->addWidget(expBtn);
+  bar->Add(expBtn, 2);
 
   auto* delBtn = new QPushButton(QStringLiteral("删除"), bar);
   connect(delBtn, &QPushButton::clicked, this, &ChatPanel::DeleteCurrentSession);
-  barLay->addWidget(delBtn);
+  bar->Add(delBtn, 3);  // 删除最先收起，避免窄卡片上误点
 
   root->addWidget(bar);
 
@@ -338,10 +358,9 @@ void ChatPanel::BuildUi() {
   };
   boxLay->addWidget(input_);
 
-  auto* tool = new QWidget(box);
-  auto* toolLay = new QHBoxLayout(tool);
-  toolLay->setContentsMargins(0, 0, 0, 0);
-  toolLay->setSpacing(6);
+  // 底部工具条：卡片变窄时状态小字与次要按钮自动收起，保证「发送」不被挤到变形
+  auto* tool = new OverflowBar(box);
+  tool->SetSpacing(6);
 
   auto* imgBtn = new QPushButton(QStringLiteral("图片"), tool);
   connect(imgBtn, &QPushButton::clicked, this, [this]() {
@@ -350,7 +369,7 @@ void ChatPanel::BuildUi() {
         QStringLiteral("图片 (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"));
     if (!files.isEmpty()) AttachPaths(files);
   });
-  toolLay->addWidget(imgBtn);
+  tool->Add(imgBtn, 0);
 
   auto* fileBtn = new QPushButton(QStringLiteral("文件"), tool);
   connect(fileBtn, &QPushButton::clicked, this, [this]() {
@@ -358,40 +377,40 @@ void ChatPanel::BuildUi() {
         QFileDialog::getOpenFileNames(this, QStringLiteral("选择文件"), QString());
     if (!files.isEmpty()) AttachPaths(files);
   });
-  toolLay->addWidget(fileBtn);
+  tool->Add(fileBtn, 0);
 
   auto* regenBtn = new QPushButton(QStringLiteral("重新生成"), tool);
   connect(regenBtn, &QPushButton::clicked, this, &ChatPanel::Regenerate);
-  toolLay->addWidget(regenBtn);
+  tool->Add(regenBtn, 3);  // 重新生成：窄卡片优先让位
 
   status_ = new QLabel(tool);
   status_->setObjectName("ModuleHint");
-  toolLay->addWidget(status_);
-  toolLay->addStretch(1);
+  tool->Add(status_, -1);  // 状态小字：变窄时先让位
+  tool->AddStretch(1);
 
   profileBox_ = new QComboBox(tool);
-  profileBox_->setMinimumWidth(120);
+  profileBox_->setMinimumWidth(56);
   profileBox_->setMaximumWidth(240);
   profileBox_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
   profileBox_->setToolTip(QStringLiteral("切换 AI 配置（接口 + 性格）"));
   connect(profileBox_, QOverload<int>::of(&QComboBox::activated), this,
           &ChatPanel::OnProfilePicked);
-  toolLay->addWidget(profileBox_);
+  tool->Add(profileBox_, 0, 1);
 
   modelLab_ = new QLabel(tool);
   modelLab_->setObjectName("ModuleHint");
-  toolLay->addWidget(modelLab_);
+  tool->Add(modelLab_, -2);  // 模型名：变窄时先于状态小字让位
 
   stopBtn_ = new QPushButton(QStringLiteral("停止"), tool);
   stopBtn_->setVisible(false);
   connect(stopBtn_, &QPushButton::clicked, this, &ChatPanel::StopStreaming);
-  toolLay->addWidget(stopBtn_);
+  tool->Add(stopBtn_, 0);
 
   sendBtn_ = new QPushButton(QStringLiteral("发送"), tool);
   sendBtn_->setObjectName("Primary");
   sendBtn_->setMinimumWidth(78);
   connect(sendBtn_, &QPushButton::clicked, this, &ChatPanel::Send);
-  toolLay->addWidget(sendBtn_);
+  tool->Add(sendBtn_, 0);
 
   boxLay->addWidget(tool);
   root->addWidget(box);
@@ -399,6 +418,16 @@ void ChatPanel::BuildUi() {
   if (cfg_) {
     RefreshModelInfo();
     input_->setEnabled(true);
+  }
+
+  // 诊断自测：WORKDESK_SELFTEST=1 时自动发一条极短消息，用于复现「发送即崩」
+  if (std::getenv("WORKDESK_SELFTEST")) {
+    wd::Trace("selftest: scheduled");
+    QTimer::singleShot(2000, this, [this]() {
+      wd::Trace("selftest: fire");
+      input_->setPlainText(QStringLiteral("ping"));
+      Send();
+    });
   }
 }
 
@@ -472,6 +501,9 @@ void ChatPanel::AddBubble(const ChatMessage& msg, bool saveIt) {
   connect(b, &MessageBubble::ImageClicked, this, [this](const QString& path) {
     if (!path.isEmpty()) emit Notice(path);
   });
+  // AI 给出的 ```write 块：用户点「写入记事本」后交给主窗落进记事本
+  connect(b, &MessageBubble::WriteRequested, this,
+          [this](const QString& text) { emit WriteToNotepad(text); });
   // 附件 / 图片点击后交给系统默认程序打开
   connect(b, &MessageBubble::FileClicked, this,
           [this, msg](const QString& path, int imageIndex) {
@@ -824,6 +856,7 @@ int ChatPanel::LastUserIndex() const {
 }
 
 void ChatPanel::Send() {
+  wd::Trace("send: enter");
   if (Busy()) return;
   const QString text = input_->toPlainText().trimmed();
   if (text.isEmpty() && pendingImgs_.empty() && pendingFiles_.empty()) return;
@@ -837,6 +870,7 @@ void ChatPanel::Send() {
   u.files = pendingFiles_;
   msgs_.push_back(u);
   AddBubble(u, true);
+  wd::Trace("send: user bubble ok");
   pendingImgs_.clear();
   pendingFiles_.clear();
   UpdatePendingChips();
@@ -847,17 +881,51 @@ void ChatPanel::Send() {
   msgs_.push_back(a);
   AddBubble(a, false);
   streamingIndex_ = (int)msgs_.size() - 1;
+  wd::Trace("send: ai bubble ok");
   ScrollToBottom(true);
+  wd::Trace("send: scroll ok");
 
   const int userIdx = (int)msgs_.size() - 2;
-  const std::string body = BuildRequestBody(*cfg_, msgs_, userIdx);
+  std::string body;
+  {
+    char b0[128];
+    snprintf(b0, sizeof(b0), "send: userIdx=%d total=%zu", userIdx, msgs_.size());
+    wd::Trace(b0);
+  }
+  try {
+    wd::Trace("send: ctx begin");
+    std::string ctx;
+    if (liveCtx_) ctx = liveCtx_();
+    {
+      char cb[128];
+      snprintf(cb, sizeof(cb), "send: ctx=%zu", ctx.size());
+      wd::Trace(cb);
+    }
+    wd::Trace("send: msgs start");
+    body = BuildRequestBody(*cfg_, msgs_, userIdx, ctx);
+    wd::Trace("send: msgs end");
+  } catch (const std::exception& e) {
+    char tb[1024];
+    snprintf(tb, sizeof(tb), "send: EXC %s total=%zu userIdx=%d bodylen=%zu", e.what(),
+             msgs_.size(), userIdx, body.size());
+    wd::Trace(tb);
+    // 绝不能让异常穿出事件处理器：Qt 会直接 abort 整个进程（现象就是「一发消息就闪退」）
+    pollTimer_->stop();
+    SetBusyUi(false);
+    if (status_) status_->setText(QStringLiteral("请求构建失败：%1").arg(QString::fromUtf8(e.what())));
+    emit Notice(QStringLiteral("构建请求失败（%1），已取消本次发送").arg(QString::fromUtf8(e.what())));
+    return;
+  }
+  wd::Trace("send: body ok");
   streamEnded_ = false;
   typeTarget_.clear();
   typeShown_ = 0;
   streamError_.clear();
   if (stream_) stream_->Start(cfg_->Endpoint(), cfg_->apiKey, body);
+  wd::Trace("send: stream started");
   pollTimer_->start(16);
   SetBusyUi(true);
+  wd::Trace("send: done");
   dirty_ = true;
   if (status_) status_->setText(QStringLiteral("正在请求模型…"));
 }
@@ -883,7 +951,8 @@ void ChatPanel::Regenerate() {
   streamingIndex_ = (int)msgs_.size() - 1;
   ScrollToBottom(true);
 
-  const std::string body = BuildRequestBody(*cfg_, msgs_, uIdx);
+  const std::string body =
+      BuildRequestBody(*cfg_, msgs_, uIdx, liveCtx_ ? liveCtx_() : std::string());
   streamEnded_ = false;
   typeTarget_.clear();
   typeShown_ = 0;
@@ -942,6 +1011,7 @@ void ChatPanel::PollStream() {
   bool finished = false;
   const bool has = stream_->Consume(delta, err, finished);
   if (has) {
+    wd::Trace("poll: has data");
     if (!err.empty()) streamError_ = err;
     if (!delta.empty() && streamingIndex_ >= 0 && streamingIndex_ < (int)msgs_.size()) {
       // 增量只落到消息体，显示交给打字机逐帧推进：网络一次吐一大段也不会整块闪现
@@ -954,6 +1024,7 @@ void ChatPanel::PollStream() {
   PumpTypewriter(false);
   if (finished && !streamEnded_) {
     streamEnded_ = true;
+    wd::Trace("poll: finished");
     pollTimer_->stop();
     if (streamingIndex_ >= 0 && streamingIndex_ < (int)msgs_.size()) {
       ChatMessage& m = msgs_[streamingIndex_];
@@ -967,10 +1038,17 @@ void ChatPanel::PollStream() {
         PumpTypewriter(true);  // 没吐完的尾巴一次性补齐，避免收尾后缺字
         streamingBubble_->Finalize();
       }
+      // 自动导入：回复里带 ```write 块就直接写进记事本，不用再点按钮；
+      // 是否留用交给记事本底部那排「同意 / 不同意」决定
+      QString doc;
+      if (PickWriteBlock(m.text, &doc)) emit WriteToNotepad(doc);
+      wd::Trace("poll: writeblock done");
     }
     SetBusyUi(false);
+    wd::Trace("poll: busyui off");
     dirty_ = true;
     SaveCurrent(true);
+    wd::Trace("poll: saved");
     ScrollToBottom(true);
     if (status_) {
       status_->setText(streamError_.empty() ? QStringLiteral("完成")

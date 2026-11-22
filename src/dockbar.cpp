@@ -21,6 +21,7 @@
 #include <QVBoxLayout>
 
 #include "theme.h"
+#include "musicplayer.h"
 
 namespace wd {
 namespace {
@@ -134,6 +135,7 @@ void DockBar::BuildUi() {
   // 收起时唯一可见的东西：一条圆角细竖条，不放任何文字
   strip_ = new QWidget(this);
   strip_->setObjectName("DockStrip");
+  strip_->installEventFilter(this);
   strip_->setGeometry(0, 0, kStripW, height());
   auto* sl = new QVBoxLayout(strip_);
   // 细竖线从头到尾铺满卡片高度，不再上下留白，
@@ -235,6 +237,8 @@ void DockBar::BuildUi() {
   panelLay_->addWidget(modBox_);
   modSep_->setVisible(false);
   modBox_->setVisible(false);
+
+  BuildMiniPlayer();
 
   panelLay_->addStretch(1);
 
@@ -350,7 +354,12 @@ void DockBar::Collapse() {
   connect(anim_, &QPropertyAnimation::finished, this,
           [this]() {
             animating_ = false;
-            if (collapsed_) panel_->hide();
+            if (collapsed_) {
+              panel_->hide();
+              // 半透明顶层窗口上，局部 update 只重画脏区；DWM 合成时偶尔会把上一次
+              // 面板图像留在玻璃层里。收起动画结束后整窗重绘一遍，代价一次性、可忽略。
+              if (QWidget* top = window()) top->repaint();
+            }
           },
           Qt::UniqueConnection);
   anim_->start();
@@ -359,6 +368,13 @@ void DockBar::Collapse() {
 void DockBar::enterEvent(QEnterEvent* e) {
   QWidget::enterEvent(e);
   Expand();
+}
+
+// 收起时 dock 只剩 12px，整条被 strip_ 盖住，鼠标其实"进入"的是子控件。
+// 给 strip_ 装过滤器兜住 Enter，保证鼠标贴右边缘就能拉出面板。
+bool DockBar::eventFilter(QObject* o, QEvent* e) {
+  if (o == strip_ && e->type() == QEvent::Enter) Expand();
+  return QWidget::eventFilter(o, e);
 }
 
 void DockBar::leaveEvent(QEvent* e) {
@@ -374,6 +390,89 @@ void DockBar::TickClock() {
                      .arg(now.date().month())
                      .arg(now.date().day())
                      .arg(QString::fromUtf8(kWeek[now.date().dayOfWeek() - 1])));
+}
+
+// 迷你播放器：Dock 里常驻的播放控制。音乐模块被隐藏、切到别的模块都不影响。
+void DockBar::BuildMiniPlayer() {
+  miniSep_ = new QFrame(panel_);
+  miniSep_->setObjectName(QStringLiteral("DockSep"));
+  miniSep_->setFixedHeight(1);
+
+  miniBox_ = new QWidget(panel_);
+  miniBox_->setStyleSheet(QStringLiteral("background:transparent;"));
+  auto* ml = new QVBoxLayout(miniBox_);
+  ml->setContentsMargins(0, 0, 0, 0);
+  ml->setSpacing(3);
+
+  miniTitle_ = new QLabel(miniBox_);
+  miniTitle_->setObjectName(QStringLiteral("DockMiniTitle"));
+  miniTitle_->setText(QStringLiteral("没在放歌"));
+  miniTitle_->setFixedWidth(kContentW - 18);
+  ml->addWidget(miniTitle_);
+
+  auto* row = new QWidget(miniBox_);
+  row->setStyleSheet(QStringLiteral("background:transparent;"));
+  auto* rl = new QHBoxLayout(row);
+  rl->setContentsMargins(0, 0, 0, 0);
+  rl->setSpacing(2);
+
+  auto makeBtn = [row](const QString& text, const QString& tip) {
+    auto* b = new QToolButton(row);
+    b->setObjectName(QStringLiteral("DockIconBtn"));
+    b->setText(text);
+    b->setToolTip(tip);
+    b->setFixedSize(30, 22);
+    b->setCursor(Qt::PointingHandCursor);
+    return b;
+  };
+  miniPrev_ = makeBtn(QStringLiteral("|◀"), QStringLiteral("上一首"));
+  miniPlay_ = makeBtn(QStringLiteral("▶"), QStringLiteral("播放 / 暂停"));
+  miniNext_ = makeBtn(QStringLiteral("▶|"), QStringLiteral("下一首"));
+  rl->addWidget(miniPrev_);
+  rl->addWidget(miniPlay_);
+  rl->addWidget(miniNext_);
+  rl->addStretch(1);
+  ml->addWidget(row);
+
+  panelLay_->addWidget(miniSep_);
+  panelLay_->addWidget(miniBox_);
+  miniSep_->setVisible(false);
+  miniBox_->setVisible(false);
+
+  MusicPlayer& mp = MusicPlayer::Instance();
+  connect(miniPrev_, &QToolButton::clicked, &mp, &MusicPlayer::Prev);
+  connect(miniPlay_, &QToolButton::clicked, &mp, &MusicPlayer::PlayPause);
+  connect(miniNext_, &QToolButton::clicked, &mp, &MusicPlayer::Next);
+  connect(&mp, &MusicPlayer::TrackChanged, this, &DockBar::TickMini);
+  connect(&mp, &MusicPlayer::StateChanged, this, &DockBar::TickMini);
+  connect(&mp, &MusicPlayer::PlaylistChanged, this, &DockBar::TickMini);
+
+  miniTimer_ = new QTimer(this);
+  miniTimer_->setInterval(400);
+  connect(miniTimer_, &QTimer::timeout, this, &DockBar::TickMini);
+  miniTimer_->start();
+  TickMini();
+}
+
+void DockBar::TickMini() {
+  if (!miniBox_) return;
+  MusicPlayer& mp = MusicPlayer::Instance();
+  const bool has = mp.CurrentIndex() >= 0 && !mp.Playlist().isEmpty();
+  miniSep_->setVisible(has);
+  miniBox_->setVisible(has);
+  if (!has) return;
+
+  const Track t = mp.Playlist().at(mp.CurrentIndex());
+  const QString key = QStringLiteral("%1|%2").arg(t.title, t.artist);
+  if (key != miniKey_) {
+    miniKey_ = key;
+    const QString line = t.artist.isEmpty() ? t.title
+                                            : QStringLiteral("%1 - %2").arg(t.title, t.artist);
+    miniTitle_->setText(miniTitle_->fontMetrics().elidedText(
+        line, Qt::ElideRight, kContentW - 18));
+    miniTitle_->setToolTip(line);
+  }
+  miniPlay_->setText(mp.Playing() ? QStringLiteral("❚❚") : QStringLiteral("▶"));
 }
 
 }  // namespace wd

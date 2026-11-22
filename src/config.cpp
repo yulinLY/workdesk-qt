@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <cstdlib>
+
 #include <nlohmann/json.hpp>
 
 #include "http.h"
@@ -96,6 +98,19 @@ const PersonaPreset* PersonaPresets(int& count) {
 }
 
 std::string Config::Endpoint() const { return NormalizeEndpoint(baseUrl); }
+
+// birthday 存成 "YYYY-MM-DD"；解析失败一律按"没填"处理，不让脏数据影响彩蛋判断
+int Config::birthdayMonth() const {
+  if (birthday.size() < 10) return 0;
+  const int m = std::atoi(birthday.substr(5, 2).c_str());
+  return (m >= 1 && m <= 12) ? m : 0;
+}
+
+int Config::birthdayDay() const {
+  if (birthday.size() < 10) return 0;
+  const int d = std::atoi(birthday.substr(8, 2).c_str());
+  return (d >= 1 && d <= 31) ? d : 0;
+}
 
 std::wstring Config::Path() {
   const std::wstring inAppData = AppDataDir() + L"\\config.json";
@@ -233,6 +248,9 @@ void Config::Load() {
       }
       auto ait = j.find("active_profile");
       if (ait != j.end() && ait->is_number_integer()) activeProfile = ait->get<int>();
+
+      ReadStr(j, "birthday", birthday);
+      ReadInt(j, "birthday_shown_year", birthdayShownYear);
     } catch (...) {
     }
   }
@@ -272,6 +290,8 @@ bool Config::Save() {
   j["address_as"] = addressAs;
   j["extra_prompt"] = extraPrompt;
   j["active_profile"] = activeProfile;
+  j["birthday"] = birthday;
+  j["birthday_shown_year"] = birthdayShownYear;
 
   json arr = json::array();
   for (const auto& p : profiles) {

@@ -1,8 +1,11 @@
 #include "notepad.h"
 
 #include "fontcombo.h"
+#include "overflowbar.h"
 
+#include <QApplication>
 #include <QCheckBox>
+#include <QColor>
 #include <QEvent>
 #include <QFile>
 #include <QFileDialog>
@@ -17,11 +20,17 @@
 #include <QSettings>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPalette>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QScrollBar>
 #include <QStringConverter>
+#include <QSyntaxHighlighter>
 #include <QTextBlock>
+#include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -88,6 +97,176 @@ class LineNumberArea : public QWidget {
 };
 
 }  // namespace
+
+// ------------------------------------------------------- Markdown 实时样式
+// 输入区直接按 Markdown 语义上样式，不再另开预览：标题放大加粗、**粗体**、*斜体*、
+// ~~删除线~~、行内代码与 ``` 围栏块等宽底纹、# 与列表符号淡化、引用整行弱化、链接下划线。
+// 只改显示不改文字：字符不隐藏，光标/选中/撤销/查找与原纯文本完全一致，AI 写回也不受影响。
+class MdStyle : public QSyntaxHighlighter {
+ public:
+  explicit MdStyle(QTextDocument* doc) : QSyntaxHighlighter(doc) { Recolor(); }
+
+  // 隐藏 Markdown 标记符：只把 # ** ` > - 这些符号画没，文字一个字符都不动，
+  // 光标、选中、撤销、查找和 AI 写回仍按原文走。
+  void SetHideMarkers(bool on) {
+    if (hideMarkers_ == on) return;
+    hideMarkers_ = on;
+    Recolor();
+  }
+  bool HideMarkers() const { return hideMarkers_; }
+
+  // 主题或字号变了重新取色、重算基准字号并全量刷一遍
+  void Recolor() {
+    const QColor base = QApplication::palette().color(QPalette::WindowText);
+    const bool dark = QApplication::palette().color(QPalette::Window).lightness() < 128;
+
+    marker_ = QTextCharFormat();
+    if (hideMarkers_) {
+      // 双保险：颜色贴死编辑区底色 + 字号压到极小，符号在视觉上彻底消失且几乎不占宽
+      const QColor bgc = QApplication::palette().color(QPalette::Base);
+      marker_.setForeground(bgc);
+      marker_.setBackground(bgc);
+      marker_.setFontPointSize(0.8);
+    } else {
+      marker_.setForeground(QColor(base.red(), base.green(), base.blue(), 110));
+    }
+
+    head_ = QTextCharFormat();
+    head_.setForeground(dark ? QColor(0x79, 0xb8, 0xff) : QColor(0x0a, 0x58, 0xca));
+    head_.setFontWeight(QFont::DemiBold);
+
+    bold_ = QTextCharFormat();
+    bold_.setFontWeight(QFont::Bold);
+
+    italic_ = QTextCharFormat();
+    italic_.setFontItalic(true);
+
+    strike_ = QTextCharFormat();
+    strike_.setFontStrikeOut(true);
+    strike_.setForeground(QColor(base.red(), base.green(), base.blue(), 170));
+
+    code_ = QTextCharFormat();
+    code_.setFontFamilies({QStringLiteral("Consolas"), QStringLiteral("Cascadia Mono")});
+    code_.setFontFixedPitch(true);
+    code_.setBackground(QColor(base.red(), base.green(), base.blue(), dark ? 30 : 22));
+    code_.setForeground(dark ? QColor(0xe6, 0xb3, 0xf0) : QColor(0x9c, 0x27, 0xb0));
+
+    quote_ = QTextCharFormat();
+    quote_.setForeground(QColor(base.red(), base.green(), base.blue(), 150));
+    quote_.setFontItalic(true);
+
+    link_ = QTextCharFormat();
+    link_.setForeground(dark ? QColor(0x6c, 0xb6, 0xff) : QColor(0x0b, 0x5c, 0xd6));
+    link_.setFontUnderline(true);
+
+    rehighlight();
+  }
+
+ protected:
+  void highlightBlock(const QString& text) override {
+    const int prev = previousBlockState();
+    static const QRegularExpression fence(QStringLiteral("^\\s*(```+|~~~+)"));
+    static const QRegularExpression head(QStringLiteral("^(#{1,6})(\\s*)(.*)$"));
+    static const QRegularExpression quote(QStringLiteral("^\\s*>+"));
+    static const QRegularExpression bullet(QStringLiteral("^(\\s*)([-*+]|\\d+[.)])(\\s)"));
+    static const QRegularExpression hr(QStringLiteral("^\\s*(?:-{3,}|\\*{3,}|_{3,})\\s*$"));
+    static const QRegularExpression bold(QStringLiteral("\\*\\*([^*\\n]+)\\*\\*"));
+    static const QRegularExpression italic(QStringLiteral("(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)"));
+    static const QRegularExpression strike(QStringLiteral("~~([^~\\n]+)~~"));
+    static const QRegularExpression code(QStringLiteral("`([^`\\n]+)`"));
+    static const QRegularExpression link(QStringLiteral("\\[([^\\]\\n]*)\\]\\(([^)\\n]*)\\)"));
+
+    // 围栏代码块：围栏行本身也按块内样式画，进/出各翻转一次状态
+    const bool fenceLine = fence.match(text).hasMatch();
+    if (prev == 1 || fenceLine) {
+      setFormat(0, text.length(), code_);
+      setCurrentBlockState(fenceLine ? (prev == 1 ? 0 : 1) : 1);
+      return;
+    }
+    setCurrentBlockState(0);
+
+    const qreal basePt = document()->defaultFont().pointSizeF() > 0
+                             ? document()->defaultFont().pointSizeF()
+                             : 10.5;
+
+    // 标题：整行放大加粗，# 号本身淡化
+    const auto hm = head.match(text);
+    if (hm.hasMatch()) {
+      const int level = hm.capturedLength(1);
+      QTextCharFormat f = head_;
+      f.setFontPointSize(basePt * (level == 1 ? 1.6 : level == 2 ? 1.38 : level == 3 ? 1.2 : 1.08));
+      setFormat(0, text.length(), f);
+      setFormat(0, level, marker_);
+    }
+
+    // 引用：整行弱化，> 号再淡一层
+    const auto qm = quote.match(text);
+    if (qm.hasMatch()) {
+      setFormat(0, text.length(), quote_);
+      setFormat(qm.capturedStart(), qm.capturedLength(), marker_);
+    }
+
+    // 列表符号（- * + / 1. 2) ）
+    const auto bm = bullet.match(text);
+    if (bm.hasMatch()) setFormat(bm.capturedStart(2), bm.capturedLength(2), marker_);
+
+    // 分割线
+    if (hr.match(text).hasMatch()) setFormat(0, text.length(), marker_);
+
+    // 行内：粗体 / 斜体 / 删除线 / 代码 / 链接，标记符统一淡化，内容按语义上样式
+    auto run = [this, &text](const QRegularExpression& re, int markLen, const QTextCharFormat& body,
+                             bool markBothSides) {
+      auto it = re.globalMatch(text);
+      while (it.hasNext()) {
+        const auto m = it.next();
+        if (m.capturedStart(1) < 0) continue;
+        if (markBothSides) {
+          setFormat(m.capturedStart(), markLen, marker_);
+          setFormat(m.capturedEnd() - markLen, markLen, marker_);
+        }
+        setFormat(m.capturedStart(1), m.capturedLength(1), body);
+      }
+    };
+    run(bold, 2, bold_, true);
+    run(italic, 1, italic_, true);
+    run(strike, 2, strike_, true);
+    run(code, 1, code_, true);
+
+    // 链接：[文字](地址)：文字上链接色，括号部分淡化
+    static const QRegularExpression img(QStringLiteral("!\\[([^\\]\\n]*)\\]\\(([^)\\n]*)\\)"));
+    auto lit = link.globalMatch(text);
+    while (lit.hasNext()) {
+      const auto m = lit.next();
+      // 图片 ![x](y) 也命中 [x](y)，感叹号交给图片规则淡掉
+      setFormat(m.capturedStart(), 1, marker_);
+      setFormat(m.capturedStart(1), m.capturedLength(1), link_);
+      setFormat(m.capturedStart(2) - 2, 2 + m.capturedLength(2) + 1, marker_);
+    }
+    auto iit = img.globalMatch(text);
+    while (iit.hasNext()) {
+      const auto m = iit.next();
+      setFormat(m.capturedStart(), 1, marker_);
+    }
+
+    // 任务列表：- [ ] / - [x]，方框按代码样式强调，省得看成普通列表
+    static const QRegularExpression task(QStringLiteral("^\\s*[-*+]\\s+(\\[[ xX]\\])"));
+    const auto tm = task.match(text);
+    if (tm.hasMatch()) setFormat(tm.capturedStart(1), tm.capturedLength(1), code_);
+
+    // 表格：竖线淡化，分隔行（|---|:--:|）整行弱化
+    if (text.contains(QLatin1Char('|'))) {
+      static const QRegularExpression tsep(QStringLiteral("^\\s*\\|[\\s:|-]*\\|\\s*$"));
+      if (tsep.match(text).hasMatch()) setFormat(0, text.length(), quote_);
+      static const QRegularExpression pipe(QStringLiteral("\\|"));
+      auto pit = pipe.globalMatch(text);
+      while (pit.hasNext()) setFormat(pit.next().capturedStart(), 1, marker_);
+    }
+  }
+
+ private:
+  QTextCharFormat marker_, head_, bold_, italic_, strike_, code_, quote_, link_;
+  bool hideMarkers_ = false;  // 隐藏标记符：把 # ** ` 等画没，只留渲染效果
+};
 
 // ---------------------------------------------------------------- CodeEdit
 
@@ -188,44 +367,38 @@ void NotepadPanel::BuildUi() {
   });
   connect(edit_, &QPlainTextEdit::selectionChanged, this, [this]() { UpdateInfo(); });
 
-  // ---- 顶栏（分两行：卡片窄的时候不会把按钮挤成省略号）
+  // 输入区即时 Markdown 渲染：边打字边出标题/粗体/代码块等样式，不再另开预览面板
+  mdStyle_ = new MdStyle(edit_->document());
+
+  // ---- 顶栏（分两行；卡片窄的时候把次要按钮依次收进「⋯」，不再把按钮挤到互相叠压）
   auto* bar = new QWidget(this);
   auto* barCol = new QVBoxLayout(bar);
   barCol->setContentsMargins(0, 0, 0, 0);
   barCol->setSpacing(4);
 
-  auto makeRow = [bar, barCol]() {
-    auto* row = new QWidget(bar);
-    auto* lay = new QHBoxLayout(row);
-    lay->setContentsMargins(0, 0, 0, 0);
-    lay->setSpacing(4);
-    barCol->addWidget(row);
-    return lay;
-  };
-  QHBoxLayout* row1 = makeRow();
-  QHBoxLayout* row2 = makeRow();
+  auto* row1 = new OverflowBar(bar);
+  auto* row2 = new OverflowBar(bar);
+  barCol->addWidget(row1);
+  barCol->addWidget(row2);
 
-  auto mkBtn = [](QHBoxLayout* lay, const QString& text, const QString& tip) {
+  // prio：0 常驻；数字越大越早收进「⋯」菜单（打开/保存永远留在条上）
+  auto mkBtn = [](OverflowBar* lay, const QString& text, const QString& tip, int prio = 0) {
     auto* b = new QPushButton(text);
     b->setToolTip(tip);
     b->setCursor(Qt::PointingHandCursor);
-    lay->addWidget(b);
+    lay->Add(b, prio);
     return b;
   };
-  auto mkTool = [](QHBoxLayout* lay, const QString& text, const QString& tip) {
+  auto mkTool = [](OverflowBar* lay, const QString& text, const QString& tip, int prio = 0) {
     auto* b = new QToolButton();
     b->setText(text);
     b->setToolTip(tip);
     b->setAutoRaise(true);
     b->setCursor(Qt::PointingHandCursor);
-    lay->addWidget(b);
+    lay->Add(b, prio);
     return b;
   };
-  auto mkSep = [](QHBoxLayout* lay) {
-    auto* s = new QLabel(QStringLiteral("|"));
-    s->setObjectName("ModuleHint");
-    lay->addWidget(s);
-  };
+  auto mkSep = [](OverflowBar* lay) { lay->AddSeparator(); };
 
   auto* openBtn = mkBtn(row1, QStringLiteral("打开"), QStringLiteral("打开文本文件（Ctrl+O）"));
   connect(openBtn, &QPushButton::clicked, this, [this]() { OpenWithDialog(); });
@@ -233,7 +406,7 @@ void NotepadPanel::BuildUi() {
   auto* saveBtn = mkBtn(row1, QStringLiteral("保存"), QStringLiteral("保存（Ctrl+S）"));
   connect(saveBtn, &QPushButton::clicked, this, [this]() { SaveNow(); });
 
-  auto* saveAsBtn = mkBtn(row1, QStringLiteral("另存为"), QStringLiteral("另存为"));
+  auto* saveAsBtn = mkBtn(row1, QStringLiteral("另存为"), QStringLiteral("另存为"), 2);
   connect(saveAsBtn, &QPushButton::clicked, this, [this]() {
     const QString p = QFileDialog::getSaveFileName(
         this, QStringLiteral("另存为"),
@@ -242,30 +415,30 @@ void NotepadPanel::BuildUi() {
   });
 
   mkSep(row1);
-  undoBtn_ = mkTool(row1, QStringLiteral("撤销"), QStringLiteral("撤销（Ctrl+Z）"));
+  undoBtn_ = mkTool(row1, QStringLiteral("撤销"), QStringLiteral("撤销（Ctrl+Z）"), 3);
   undoBtn_->setEnabled(false);
   connect(undoBtn_, &QToolButton::clicked, edit_, &QPlainTextEdit::undo);
   connect(edit_, &QPlainTextEdit::undoAvailable, undoBtn_, &QToolButton::setEnabled);
 
-  redoBtn_ = mkTool(row1, QStringLiteral("重做"), QStringLiteral("重做（Ctrl+Y）"));
+  redoBtn_ = mkTool(row1, QStringLiteral("重做"), QStringLiteral("重做（Ctrl+Y）"), 3);
   redoBtn_->setEnabled(false);
   connect(redoBtn_, &QToolButton::clicked, edit_, &QPlainTextEdit::redo);
   connect(edit_, &QPlainTextEdit::redoAvailable, redoBtn_, &QToolButton::setEnabled);
 
   mkSep(row1);
-  auto* findBtn = mkTool(row1, QStringLiteral("查找"), QStringLiteral("查找（Ctrl+F）"));
+  auto* findBtn = mkTool(row1, QStringLiteral("查找"), QStringLiteral("查找（Ctrl+F）"), 4);
   connect(findBtn, &QToolButton::clicked, this, [this]() {
     ShowFind(!findBar_->isVisible());
   });
-  auto* replBtn = mkTool(row1, QStringLiteral("替换"), QStringLiteral("替换（Ctrl+H）"));
+  auto* replBtn = mkTool(row1, QStringLiteral("替换"), QStringLiteral("替换（Ctrl+H）"), 4);
   connect(replBtn, &QToolButton::clicked, this, [this]() { ShowFind(true, true); });
-  row1->addStretch(1);
+  row1->AddStretch(1);
 
   fontBox_ = new FontCombo();
-  fontBox_->setMinimumWidth(150);
+  fontBox_->setMinimumWidth(88);  // 可压缩：卡片窄时先让给按钮
   fontBox_->setMaximumWidth(200);
   fontBox_->SetFamily(edit_->font().families().value(0));
-  row2->addWidget(fontBox_);
+  row2->Add(fontBox_, 0, 1);
   connect(fontBox_, &FontCombo::FamilyChanged, this, [this](const QString& fam) {
     QFont g = edit_->font();
     g.setFamilies({fam});
@@ -280,8 +453,19 @@ void NotepadPanel::BuildUi() {
   auto* plusBtn = mkTool(row2, QStringLiteral("A+"), QStringLiteral("增大字号（Ctrl+滚轮）"));
   connect(plusBtn, &QToolButton::clicked, this, [this]() { SetFontSize(pt_ + 1); });
 
-  wrapBtn_ = mkTool(row2, QStringLiteral("换行：开"), QStringLiteral("自动换行开关（Alt+Z）"));
+  wrapBtn_ = mkTool(row2, QStringLiteral("换行：开"), QStringLiteral("自动换行开关（Alt+Z）"), 2);
   connect(wrapBtn_, &QToolButton::clicked, this, [this]() { SetWrap(!wrap_); });
+
+  // Markdown 渲染总开关：关掉连语法着色一起停，编辑区退回纯文本视图
+  mdOnBtn_ = mkTool(row2, QStringLiteral("Markdown：开"),
+                    QStringLiteral("Markdown 渲染开关（Alt+M）：关掉后不再着色、不再弱化标记符，回到纯文本编辑"),
+                    3);
+  connect(mdOnBtn_, &QToolButton::clicked, this, [this]() { SetMarkdown(!mdOn_); });
+
+  mdHideBtn_ = mkTool(row2, QStringLiteral("标记：显示"),
+                      QStringLiteral("隐藏 / 显示 Markdown 标记符（# ** ` > 等）：只改显示，文字一个字符都不动"),
+                      3);
+  connect(mdHideBtn_, &QToolButton::clicked, this, [this]() { SetHideMarkers(!hideMd_); });
 
   encBtn_ = mkTool(row2, encoding_, QStringLiteral("文本编码：点开可切换并重新载入"));
   auto* encMenu = new QMenu(encBtn_);
@@ -295,12 +479,16 @@ void NotepadPanel::BuildUi() {
   connect(encBtn_, &QToolButton::clicked, this, [encBtn = encBtn_, encMenu]() {
     encMenu->exec(encBtn->mapToGlobal(QPoint(0, encBtn->height())));
   });
-  row2->addStretch(1);
+
+  mkSep(row2);
+  row2->AddStretch(1);
 
   root->addWidget(bar);
 
   BuildFindBar();
   root->addWidget(findBar_);
+
+  // Markdown 就写在编辑区里，不再另开渲染分栏：Ctrl+Alt 唤起格式工具栏即可排版
   root->addWidget(edit_, 1);
 
   // 状态栏：文件 / 行 / 字 / 字符 / 选中 / 编码；放底部，免得把顶栏一排按钮挤变形
@@ -313,6 +501,11 @@ void NotepadPanel::BuildUi() {
   statusLay->addWidget(info_);
   statusLay->addStretch(1);
   root->addWidget(status);
+
+  // AI 写回确认条：紧贴底部，写完文档抬出来问一句「同意不同意」
+  BuildAiBar();
+  root->addWidget(aiBar_);
+  ShowAiBar(false);
 
   // ---- 快捷键
   UpdateInfo();
@@ -372,12 +565,26 @@ void NotepadPanel::BuildFindBar() {
 }
 
 bool NotepadPanel::eventFilter(QObject* obj, QEvent* ev) {
+  // 隐藏标记时其实是"只看排版"的浏览态：光标也一并藏起来。一旦点进输入区、
+  // 敲键或走输入法，就自动切回显示状态，标记和光标一起回来，不用再去点按钮。
+  if (mdOn_ && hideMd_ && edit_ && (obj == edit_ || obj == edit_->viewport())) {
+    const QEvent::Type t = ev->type();
+    if (t == QEvent::MouseButtonPress || t == QEvent::MouseButtonDblClick || t == QEvent::KeyPress ||
+        t == QEvent::InputMethod) {
+      SetHideMarkers(false);
+    }
+  }
   if (edit_ && obj == edit_->viewport() && ev->type() == QEvent::Wheel) {
     auto* we = static_cast<QWheelEvent*>(ev);
     if (we->modifiers() & Qt::ControlModifier) {
       SetFontSize(pt_ + (we->angleDelta().y() > 0 ? 1.0 : -1.0));
       return true;
     }
+  }
+  // 深色/亮色切换后，Markdown 样式按新调色板重取色
+  if ((ev->type() == QEvent::PaletteChange || ev->type() == QEvent::ApplicationPaletteChange) &&
+      mdStyle_) {
+    mdStyle_->Recolor();
   }
   if (ev->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(ev);
@@ -392,6 +599,7 @@ bool NotepadPanel::eventFilter(QObject* obj, QEvent* ev) {
     if (ctrl && ke->key() == Qt::Key_H) { ShowFind(true, true); return true; }
     if (ctrl && ke->key() == Qt::Key_S) { SaveNow(); return true; }
     if (alt && ke->key() == Qt::Key_Z) { SetWrap(!wrap_); return true; }
+    if (alt && ke->key() == Qt::Key_M) { SetMarkdown(!mdOn_); return true; }
     if (ctrl && (ke->key() == Qt::Key_Equal || ke->key() == Qt::Key_Plus)) {
       SetFontSize(pt_ + 1); return true;
     }
@@ -523,12 +731,61 @@ void NotepadPanel::SetWrap(bool on) {
   SavePrefs();
 }
 
+// Markdown 渲染总开关。关掉时把样式器从文档上摘掉，编辑区就是干净的纯文本，
+// 字符、光标、撤销、查找、AI 写回全程不受影响；重新打开时再挂回去并全量刷一遍。
+void NotepadPanel::SetMarkdown(bool on) {
+  mdOn_ = on;
+  if (edit_) {
+    if (on) {
+      if (!mdStyle_) {
+        mdStyle_ = new MdStyle(edit_->document());
+        mdStyle_->SetHideMarkers(hideMd_);
+      }
+      if (mdStyle_) mdStyle_->Recolor();
+    } else {
+      // 隐藏标记符是"看排版"的浏览态，Markdown 都关了就没有意义，顺手复位
+      hideMd_ = false;
+      if (mdHideBtn_) mdHideBtn_->setText(QStringLiteral("标记：显示"));
+      if (mdStyle_) {
+        mdStyle_->setDocument(nullptr);  // 纯文本视图：不再着色，原文原样显示
+        delete mdStyle_;
+        mdStyle_ = nullptr;
+      }
+    }
+    edit_->setCursorWidth(1);
+    edit_->viewport()->update();
+    edit_->update();
+  }
+  if (mdOnBtn_) mdOnBtn_->setText(on ? QStringLiteral("Markdown：开") : QStringLiteral("Markdown：关"));
+  if (mdHideBtn_) mdHideBtn_->setEnabled(on);
+  SavePrefs();
+}
+
+// 只把 Markdown 标记符画没（# ** ` > - 等），正文一个字都不改：
+// 想专心看排版时按一下，需要改源码时再按回来。
+void NotepadPanel::SetHideMarkers(bool on) {
+  if (!mdOn_) on = false;  // Markdown 关着时没有"标记符"可藏
+  hideMd_ = on;
+  if (mdStyle_) mdStyle_->SetHideMarkers(on);
+  if (mdHideBtn_) mdHideBtn_->setText(on ? QStringLiteral("标记：隐藏") : QStringLiteral("标记：显示"));
+  if (edit_) {
+    // 隐藏标记是"只看排版"的浏览态，光标也一起收掉（宽度 0 即不绘制，编辑能力不受影响）；
+    // 点进来输入时 eventFilter 会自动切回显示，光标随标记一起恢复。
+    edit_->setCursorWidth(on ? 0 : 1);
+    edit_->viewport()->update();
+    edit_->update();
+  }
+  SavePrefs();
+}
+
 // 字体/字号/换行状态记住，下次打开还是上回的样子
 void NotepadPanel::LoadPrefs() {
   QSettings st(QStringLiteral("WorkDesk"), QStringLiteral("WorkDeskQt"));
   const QString fam = st.value(QStringLiteral("notepad/font")).toString();
   const qreal pt = st.value(QStringLiteral("notepad/size"), pt_).toDouble();
   const bool wrap = st.value(QStringLiteral("notepad/wrap"), wrap_).toBool();
+  const bool hideMd = st.value(QStringLiteral("notepad/hidemd"), hideMd_).toBool();
+  const bool mdOn = st.value(QStringLiteral("notepad/markdown"), mdOn_).toBool();
   if (!fam.isEmpty() && fontBox_) {
     QSignalBlocker blk(fontBox_);
     fontBox_->SetFamily(fam);
@@ -539,6 +796,8 @@ void NotepadPanel::LoadPrefs() {
   }
   SetFontSize(pt);
   SetWrap(wrap);
+  SetMarkdown(mdOn);
+  SetHideMarkers(hideMd);
   edit_->RefreshGutter();
 }
 
@@ -548,6 +807,8 @@ void NotepadPanel::SavePrefs() {
   if (!fams.isEmpty()) st.setValue(QStringLiteral("notepad/font"), fams.first());
   st.setValue(QStringLiteral("notepad/size"), pt_);
   st.setValue(QStringLiteral("notepad/wrap"), wrap_);
+  st.setValue(QStringLiteral("notepad/markdown"), mdOn_);
+  st.setValue(QStringLiteral("notepad/hidemd"), hideMd_);
 }
 
 void NotepadPanel::SetFontSize(qreal pt) {
@@ -556,9 +817,122 @@ void NotepadPanel::SetFontSize(qreal pt) {
   f.setPointSizeF(pt_);
   edit_->setFont(f);
   edit_->setTabStopDistance(4 * QFontMetricsF(edit_->font()).horizontalAdvance(QLatin1Char(' ')));
+  if (mdStyle_) mdStyle_->Recolor();  // 标题字号按新基准重算
   edit_->RefreshGutter();
   edit_->viewport()->update();
   SavePrefs();
+}
+
+QString NotepadPanel::PlainText() const { return edit_ ? edit_->toPlainText() : QString(); }
+
+// 给 AI 的上下文只截前 maxChars 字符：超大文档整篇 toPlainText() 会瞬间吃掉几百 MB 内存，
+// 在内存吃紧时直接抛 std::bad_alloc，异常穿过 Qt 事件处理器还会把进程 abort 掉。
+QString NotepadPanel::PlainTextSnippet(int maxChars) const {
+  if (!edit_) return QString();
+  const QTextDocument* doc = edit_->document();
+  if (!doc) return QString();
+  const int total = doc->characterCount();  // 含结尾的段落分隔符
+  if (total <= maxChars + 1) return edit_->toPlainText();
+  QTextCursor c = edit_->textCursor();
+  c.setPosition(0);
+  c.setPosition(qMin(maxChars, total - 1), QTextCursor::KeepAnchor);
+  QString s = c.selectedText();
+  s.replace(QChar(0x2029), QLatin1Char('\n'));  // 段落分隔符换回换行
+  return s;
+}
+
+QString NotepadPanel::DisplayName() const {
+  if (path_.isEmpty()) return QStringLiteral("未命名文档");
+  return QFileInfo(path_).fileName();
+}
+
+// AI 写回：整篇替换走一次编辑块，用户 Ctrl+Z 能整体退回
+void NotepadPanel::ReplaceAllText(const QString& text) {
+  if (!edit_) return;
+  aiBefore_ = edit_->toPlainText();
+  aiWasDirty_ = dirty_;
+  QTextCursor c(edit_->document());
+  c.beginEditBlock();
+  c.select(QTextCursor::Document);
+  c.insertText(text);
+  c.endEditBlock();
+  dirty_ = true;
+  UpdateInfo();
+  // 导入完直接落到文末：改动通常收在结尾，眼睛不用再往上找
+  ScrollToEnd();
+  if (aiLab_) {
+    aiLab_->setText(QStringLiteral("AI 已改写《%1》，是否保留这次改动？").arg(DisplayName()));
+  }
+  ShowAiBar(true);
+  emit Notice(QStringLiteral("已导入 AI 改动：%1").arg(DisplayName()));
+}
+
+void NotepadPanel::AcceptAiWrite() {
+  ShowAiBar(false);
+  ScrollToEnd();
+  emit Notice(QStringLiteral("已保留 AI 改动，Ctrl+S 保存到文件"));
+}
+
+void NotepadPanel::RejectAiWrite() {
+  if (!edit_) return;
+  // 先试一次撤销（写回整段在一个编辑块里）；万一中间又编辑过，直接按快照回滚
+  edit_->undo();
+  if (edit_->toPlainText() != aiBefore_) {
+    QSignalBlocker b(edit_);
+    edit_->setPlainText(aiBefore_);
+  }
+  dirty_ = aiWasDirty_;
+  UpdateInfo();
+  ShowAiBar(false);
+  emit Notice(QStringLiteral("已退回 AI 改动前的版本"));
+}
+
+void NotepadPanel::ShowAiBar(bool on) {
+  if (!aiBar_) return;
+  aiBar_->setVisible(on);
+  if (on) ScrollToEnd();
+}
+
+void NotepadPanel::ScrollToEnd() {
+  if (!edit_) return;
+  edit_->moveCursor(QTextCursor::End);
+  edit_->ensureCursorVisible();
+  if (QScrollBar* sb = edit_->verticalScrollBar()) sb->setValue(sb->maximum());
+  // 确认条一出现，编辑区高度会变，下一次事件循环再贴到底
+  QTimer::singleShot(0, this, [this]() {
+    if (!edit_) return;
+    if (QScrollBar* sb = edit_->verticalScrollBar()) sb->setValue(sb->maximum());
+  });
+}
+
+void NotepadPanel::BuildAiBar() {
+  aiBar_ = new QWidget(this);
+  aiBar_->setObjectName("AiWriteBar");
+  aiBar_->setAutoFillBackground(true);
+  {  // 底色取调色板的 AlternateBase：深浅主题下自动有区分，不用写死颜色
+    QPalette p = aiBar_->palette();
+    p.setColor(QPalette::Window, p.color(QPalette::AlternateBase));
+    aiBar_->setPalette(p);
+  }
+  auto* lay = new QHBoxLayout(aiBar_);
+  lay->setContentsMargins(8, 4, 8, 4);
+  lay->setSpacing(8);
+  aiLab_ = new QLabel(aiBar_);
+  aiLab_->setObjectName("ModuleHint");
+  aiLab_->setWordWrap(true);
+  lay->addWidget(aiLab_, 1);
+  auto* keep = new QPushButton(QStringLiteral("同意"), aiBar_);
+  keep->setObjectName("CodeCopy");
+  keep->setCursor(Qt::PointingHandCursor);
+  keep->setToolTip(QStringLiteral("保留 AI 写进记事本的内容"));
+  auto* drop = new QPushButton(QStringLiteral("不同意"), aiBar_);
+  drop->setObjectName("CodeCopy");
+  drop->setCursor(Qt::PointingHandCursor);
+  drop->setToolTip(QStringLiteral("整篇退回 AI 写回之前的版本"));
+  lay->addWidget(keep);
+  lay->addWidget(drop);
+  connect(keep, &QPushButton::clicked, this, &NotepadPanel::AcceptAiWrite);
+  connect(drop, &QPushButton::clicked, this, &NotepadPanel::RejectAiWrite);
 }
 
 void NotepadPanel::LoadBytes(const QByteArray& raw, const QString& forceEncoding) {
@@ -632,9 +1006,9 @@ void NotepadPanel::OpenWithDialog() {
 
 void NotepadPanel::SaveNow() {
   if (path_.isEmpty()) {
-    const QString p = QFileDialog::getSaveFileName(this, QStringLiteral("保存为"),
-                                                   QStringLiteral("untitled.txt"),
-                                                   QStringLiteral("文本 (*.txt)"));
+    const QString p = QFileDialog::getSaveFileName(
+        this, QStringLiteral("保存为"), QStringLiteral("untitled.txt"),
+        QStringLiteral("文本 (*.txt);;Markdown (*.md);;所有文件 (*.*)"));
     if (p.isEmpty()) return;
     SaveTo(p);
     return;
@@ -670,9 +1044,9 @@ bool NotepadPanel::SaveIfDirty() {
   if (ret == QMessageBox::Cancel) return false;
   if (ret == QMessageBox::No) return true;
   if (path_.isEmpty()) {
-    const QString p = QFileDialog::getSaveFileName(this, QStringLiteral("保存为"),
-                                                   QStringLiteral("untitled.txt"),
-                                                   QStringLiteral("文本 (*.txt)"));
+    const QString p = QFileDialog::getSaveFileName(
+        this, QStringLiteral("保存为"), QStringLiteral("untitled.txt"),
+        QStringLiteral("文本 (*.txt);;Markdown (*.md);;所有文件 (*.*)"));
     if (p.isEmpty()) return false;
     return SaveTo(p);
   }

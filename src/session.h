@@ -46,7 +46,8 @@ std::string MakeSessionTitle(const std::vector<ChatMessage>& msgs);
 std::string HumanSize(unsigned long long n);
 
 // 组装 OpenAI 兼容请求体（含历史、图片 vision、文本附件内联）
-std::string BuildRequestBody(const Config& cfg, const std::vector<ChatMessage>& msgs, int upToIndex);
+std::string BuildRequestBody(const Config& cfg, const std::vector<ChatMessage>& msgs, int upToIndex,
+                             const std::string& extraSystem = std::string());
 
 // 导出 / 导入：格式与落盘会话完全一致
 bool ExportSessionJson(const std::wstring& path, const std::vector<ChatMessage>& msgs,

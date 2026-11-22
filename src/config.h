@@ -49,6 +49,16 @@ struct Config {
   std::vector<Profile> profiles;
   int activeProfile = 0;
 
+  // 用户生日（YYYY-MM-DD，空串=没填）。只存在顶层，不跟 profile 走。
+  // 用于生日当天的彩蛋，以及给 AI 的称呼上下文。
+  std::string birthday;
+  // 上一次弹过生日彩蛋的年份（0=从未），保证一年只弹一次
+  int birthdayShownYear = 0;
+
+  bool hasBirthday() const { return birthday.size() >= 10; }
+  int birthdayMonth() const;  // 1-12，没填返回 0
+  int birthdayDay() const;    // 1-31，没填返回 0
+
   bool hasApiKey() const { return !apiKey.empty(); }
   bool ok() const { return !baseUrl.empty() && !model.empty() && !apiKey.empty(); }
   std::string Endpoint() const;

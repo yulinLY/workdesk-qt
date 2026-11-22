@@ -2,6 +2,8 @@
 #include <QString>
 #include <QStringList>
 #include <QWidget>
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "config.h"
@@ -34,9 +36,13 @@ class ChatPanel : public QWidget {
   void StopStreaming();
   void RefreshModelInfo();  // 设置改动后刷新「配置 · 模型」显示
 
+  // 记事本互通：每次发请求前回调取「当前打开文档」的上下文片段（空=没打开文件）
+  void SetLiveContextProvider(std::function<std::string()> fn) { liveCtx_ = std::move(fn); }
+
  signals:
   void RequestSettings();
   void Notice(const QString& text);
+  void WriteToNotepad(const QString& text);
 
  protected:
   void dragEnterEvent(QDragEnterEvent* e) override;
@@ -69,6 +75,7 @@ class ChatPanel : public QWidget {
   void OpenAttachment(const QString& path, const QString& b64, const QString& name);
 
   Config* cfg_ = nullptr;
+  std::function<std::string()> liveCtx_;
   std::vector<ChatMessage> msgs_;
   std::vector<ChatImage> pendingImgs_;
   std::vector<ChatFile> pendingFiles_;

@@ -134,6 +134,7 @@ std::string LangDisplayName(const std::string& lang) {
   if (lang == "cmake") return "CMake";
   if (lang == "ini") return "配置";
   if (lang == "diff") return "Diff";
+  if (lang == "write" || lang == "md-write") return "记事本写回";
   if (lang == "mermaid") return "Mermaid 图表";
   return lang;
 }

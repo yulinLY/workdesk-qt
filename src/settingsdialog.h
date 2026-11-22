@@ -40,6 +40,8 @@ class SettingsDialog : public QDialog {
   void OnDeleteProfile();
 
   void ApplyProviderPreset(int idx);
+  // 按服务商把模型候选灌进「模型」下拉；keep 非空则设为当前（手输的自定义模型不丢）
+  void FillModelCandidates(int presetIdx, const QString& keep);
   void TestConnection();
   void PollProbe();
   bool Commit();
@@ -56,7 +58,7 @@ class SettingsDialog : public QDialog {
   QComboBox* provider_ = nullptr;
   QLineEdit* baseUrl_ = nullptr;
   QLineEdit* apiKey_ = nullptr;
-  QLineEdit* model_ = nullptr;
+  QComboBox* model_ = nullptr;  // 可编辑下拉：候选来自服务商预设，也能直接手输
   QDoubleSpinBox* temp_ = nullptr;
 
   QComboBox* persona_ = nullptr;

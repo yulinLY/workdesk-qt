@@ -164,7 +164,7 @@ QListView::item:selected, QListWidget::item:selected { background: @selsoft@; co
 QGroupBox { border: 1px solid @line@; border-radius: 8px; margin-top: 10px; padding-top: 6px; }
 QGroupBox::title { color: @text4@; subcontrol-origin: margin; left: 10px; padding: 0 4px; }
 QRadioButton { color: @text3@; }
-QToolTip { background: @btn@; color: @text@; border: 1px solid @btnline@; padding: 4px 7px; }
+QToolTip { background: @btn@; color: @text@; border: 1px solid @btnline@; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
 /* 拖入文件时只有边框变色，不弹任何文字提示 */
 QFrame#ModuleCard[dropHi="true"] { border: 1px solid @accent@; }
 /* 右侧 dock：整体是一块圆角面板，收起时只剩左端细条，展开时向右滑出 */
@@ -247,6 +247,76 @@ QLabel#StatusOk { color: @ok@; }
 QLabel#StatusErr { color: @err@; }
 /* dock 栏里的主题切换按钮：当前档位高亮 */
 QToolButton#DockBtn[themeOn="true"] { background: @selsoft@; color: @accenttext@; }
+/* ---- 欢迎向导 / 生日彩蛋 ---- */
+QLabel#WelcomeTitle { color: @text@; font-size: 20px; font-weight: 600; }
+QLabel#WelcomeBody { color: @text2@; font-size: 13px; }
+QLabel#WelcomeHint { color: @muted@; font-size: 12px; }
+QLabel#BirthdayTitle { color: @text@; font-size: 22px; font-weight: 600; }
+QLabel#BirthdayBody { color: @text2@; font-size: 13px; }
+QLabel#BirthdayHint { color: @muted@; font-size: 12px; }
+
+/* ---- 音乐模块 ---- */
+QLabel#MusicCover {
+  background: @btn@; color: @accent@; border: 1px solid @btnline@;
+  border-radius: 10px; font-size: 24px; font-weight: 600;
+}
+QLabel#MusicTitle { color: @text@; font-size: 14px; font-weight: 600; }
+QLabel#MusicArtist { color: @muted@; font-size: 12px; }
+QLabel#MusicAlbum { color: @faint@; font-size: 11px; }
+QLabel#MusicTime { color: @faint@; font-size: 11px; }
+QLabel#MusicLyricCur { color: @accent@; font-size: 13px; font-weight: 600; }
+QLabel#MusicLyricSide { color: @faint@; font-size: 11px; }
+QLabel#MusicSourceHint { color: @muted@; font-size: 11px; }
+QLabel#DockMiniTitle { color: @muted@; font-size: 11px; }
+QWidget#MusicPanel[dropHi="true"] { background: @hover@; border-radius: 8px; }
+QWidget#MusicPanel QListWidget {
+  background: transparent; border: none; outline: none; font-size: 12px;
+}
+QWidget#MusicPanel QListWidget::item {
+  color: @muted@; padding: 3px 5px; border-radius: 5px;
+}
+QWidget#MusicPanel QListWidget::item:hover { background: @hover@; color: @text@; }
+QWidget#MusicPanel QListWidget::item:selected {
+  background: @selsoft@; color: @text@; font-weight: 600;
+}
+QSlider#MusicProgress::groove:horizontal {
+  height: 4px; background: @btnline@; border-radius: 2px;
+}
+QSlider#MusicProgress::sub-page:horizontal { background: @accent@; border-radius: 2px; }
+QSlider#MusicProgress::handle:horizontal {
+  width: 10px; margin: -4px 0; border-radius: 5px; background: @text@;
+}
+QSlider#MusicVolume::groove:horizontal {
+  height: 3px; background: @btnline@; border-radius: 2px;
+}
+QSlider#MusicVolume::sub-page:horizontal { background: @muted@; border-radius: 2px; }
+QSlider#MusicVolume::handle:horizontal {
+  width: 9px; margin: -3px 0; border-radius: 5px; background: @text2@;
+}
+QToolButton#MusicBtn {
+  background: @btn@; color: @muted@; border: 1px solid @btnline@;
+  border-radius: 7px; padding: 4px 9px; font-size: 11px;
+}
+QToolButton#MusicBtn:hover { background: @btnhover@; color: @text@; }
+QToolButton#MusicBtn:disabled { color: @disabled@; border-color: @disline@; }
+QToolButton#MusicPlayBtn {
+  background: @accent@; color: @accenttext@; border: none;
+  border-radius: 7px; padding: 5px 12px; font-size: 12px; font-weight: 600;
+}
+QToolButton#MusicPlayBtn:hover { background: @accenthover@; }
+
+/* ---- 卸载程序（Uninstall.exe）---- */
+QLabel#UninstallTitle { color: @text@; font-size: 15px; font-weight: 600; }
+QLabel#UninstallHint { color: @muted@; font-size: 12px; }
+QTextEdit#UninstallLog {
+  background: @input@; color: @text3@; border: 1px solid @line@; border-radius: 8px;
+  font-size: 11px; padding: 6px;
+}
+QToolButton#UninstallClose {
+  background: transparent; border: none; border-radius: 6px;
+  color: @muted@; font-size: 14px; padding: 0;
+}
+QToolButton#UninstallClose:hover { background: #E5484D; color: #FFFFFF; }
 )QSS";
 
 }  // namespace theme
